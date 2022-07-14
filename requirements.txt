@@ -1,0 +1,11 @@
+playwright
+psutil
+netifaces
+numba
+transformers
+sentencepiece
+TensorFlow >= 2.0
+torch
+Pillow
+behave
+Cython

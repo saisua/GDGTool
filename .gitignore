@@ -1,0 +1,13 @@
+.pyd
+.cpp
+__pycache__/
+build/
+Data/
+src/
+.bak
+.dat
+.dir
+.exp
+.lib
+.obj
+.test
