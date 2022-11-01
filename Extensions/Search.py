@@ -5,7 +5,8 @@ from xml import dom
 # Not using Yahoo since it requires additional steps
 SEARCH_GENERAL = ["https://www.google.com/search?q={}",
                 "https://duckduckgo.com/?q={}",
-                "https://www.bing.com/search?q={}"]
+                "https://www.bing.com/search?q={}",
+                "https://en.wikipedia.org/wiki/{}"]
 
 SEARCH_IMAGES = ["https://www.google.com/search?tbm=isch&q={}",
                 "https://duckduckgo.com/?iax=images&ia=images&q={}",
@@ -43,6 +44,7 @@ _get_dict = {"default":SEARCH_GENERAL,
 
 class Search():
     child:object
+    valid_search_contexts:set = set(_get_dict.keys())
 
     def __init__(self, child:object, *args, **kwargs) -> None:
         self.child = child
