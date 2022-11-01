@@ -8,16 +8,18 @@ class Pipeline:
     _page_management:list
     _data_management:list
     _end_management:list
+    _post_management:list
     _event_management:list
     _route_management:list
 
     def __init__(self):
-        self.pipe_names = [[], [], [], [], []]
+        self.pipe_names = [[], [], [], [], [], []]
         self._start_management = []
         self._url_management = []
         self._page_management = []
         self._data_management = []
         self._end_management = []
+        self._post_management = []
         self._event_management = []
         self._route_management = []
         setattr(self, "Pipeline_init", True)
@@ -30,7 +32,9 @@ class Pipeline:
                 self._url_management, 
                 self._page_management, 
                 self._data_management,
-                self._end_management][step].insert(position, function)
+                self._end_management,
+                self._post_management
+            ][step].insert(position, function)
         elif(step == "start"):
             self._start_management.insert(position, function)
             self.pipe_names[0].insert(position, name)
@@ -46,6 +50,9 @@ class Pipeline:
         elif(step == "end"):
             self._end_management.insert(position, function)
             self.pipe_names[4].insert(position, name)
+        elif(step == "post"):
+            self._post_management.insert(position, function)
+            self.pipe_names[5].insert(position, name)
         elif(step == "event"):
             self._event_management.insert(position, function)
         elif(step == "routing"):

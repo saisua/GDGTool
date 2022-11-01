@@ -21,7 +21,7 @@ class Crawler(Browser, Search):
     next_level_sites : dict # Dict[str, List[str]]
 
     _avaliable_tabs : list
-    _open_tabs : int
+    _open_tabs : cython.uint
 
     visited_urls : set # Set[str]
     blocked_domains : set # Set[str]
@@ -40,7 +40,7 @@ class Crawler(Browser, Search):
 
         self.sites = sites
         self.visited_urls = kwargs.pop("visited_urls", set())
-        self.blocked_domains = kwargs.pop("blocked_domains", set())
+        self.blocked_domains = kwargs.pop("blocked_domains", set(['reddit.com']))
         self.add_pipe("page", Crawler.get_urls, "Get all URLs (necessary for crawling)")
 
         self._avaliable_tabs = []
@@ -168,7 +168,14 @@ class Crawler(Browser, Search):
     @cython.boundscheck(False)
     @cython.wraparound(False)
     @cython.cfunc
-    async def crawl(self, contexts:list=[], levels:cython.uint=0, *, num_contexts:cython.uint=3, max_tabs:cython.uint=25, close_contexts:cython.bint=False) -> object:
+    async def crawl(self, contexts:list=[],
+                        levels:cython.uint=0, 
+                        *, 
+                        num_contexts:cython.uint=3, 
+                        max_tabs:cython.uint=25, 
+                        close_contexts:cython.bint=False,
+                        max_websites:cython.uint=-1
+                        ) -> object:
         if(not contexts):
             print(num_contexts)
             _:cython.uint
@@ -204,13 +211,20 @@ class Crawler(Browser, Search):
         tabs:list = []
         urls:list = []
         level:cython.uint
+        if(max_websites == -1):
+            max_websites = 999999
+        
+        searched_websites:cython.uint = 0
         for level in range(levels+1):
             print(f"\n\n# Level {level}:")
             while(len(self.sites)):
+                if(searched_websites >= max_websites):
+                    break
                 print(f"  Found {len(self.visited_urls)} websites", end='\r')
 
                 tabs = await self.get_websites(max_tabs)
                 urls = await self.get_crawling_urls(len(tabs))
+                searched_websites += len(urls)
                 
                 if(len(urls) != len(tabs)):
                     self._avaliable_tabs.extend(tabs[len(urls):])
@@ -235,6 +249,9 @@ class Crawler(Browser, Search):
 
             self.sites.clear()
             self.sites.update(self.next_level_sites)
+            
+            if(searched_websites >= max_websites):
+                break
 
         for context in contexts:
             for end_f in self._end_management:

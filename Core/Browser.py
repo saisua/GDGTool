@@ -31,7 +31,7 @@ class Browser(Storage, Pipeline, Session, Resources, Rotating_proxies):
         self.browser_name = kwargs.pop("browser_name", "chromium")
 
         if(kwargs.pop("use_storage", True)):
-            Storage.__init__(self, kwargs.pop("remove_old_data", False))
+            Storage.__init__(self, remove_old_data=kwargs.pop("remove_old_data", False), folder_name=kwargs.pop("storage_name", None))
         if(kwargs.pop("use_pipeline", True)):
             Pipeline.__init__(self)
         if(kwargs.pop("use_session", True)):
@@ -47,15 +47,15 @@ class Browser(Storage, Pipeline, Session, Resources, Rotating_proxies):
         for _ in asyncio.as_completed([self.open(*args, **kwargs), *[cl.__aenter__(self) for cl in Browser.__mro__ if cl != Browser and hasattr(cl, "__aenter__")]]):
             await _
 
+        print("[+] Browser set up")
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
-        for _ in asyncio.as_completed([cl.__aexit__(self, exc_type, exc_val, exc_tb) for cl in Browser.__mro__ if cl != Browser and hasattr(cl, "__aexit__")]):
+    async def __aexit__(self, *args, **kwargs) -> None:
+        for _ in asyncio.as_completed([cl.__aexit__(self, *args, **kwargs) for cl in Browser.__mro__ if cl != Browser and hasattr(cl, "__aexit__")]):
             await _
         await self.close()
 
     async def open(self) -> None:
-        print(hasattr(self, "Browser_init"))
         if(not hasattr(self, "Browser_init")): return
 
         if(self.__playwright_instance is None):
@@ -85,9 +85,11 @@ class Browser(Storage, Pipeline, Session, Resources, Rotating_proxies):
     async def close(self) -> None:
         if(not hasattr(self, "Browser_init")): return
 
+        for post_f in self._post_management:
+            await post_f(self)
+
         await self.browser.close()
         await self.__playwright_instance.__aexit__()
-        await self.dump_all_data()
         
         self._closed = True
 
@@ -139,7 +141,13 @@ class Browser(Storage, Pipeline, Session, Resources, Rotating_proxies):
             await self.open_websites(context, [site for session in (await super()._load_session(session_name)) for site in session], *args, load_wait=load_wait, **kwargs)
 
         return context
+    
+    @cython.cfunc
+    async def wait_until_closed(self):
+        while(not self.closed):
+            await asyncio.sleep(3)
 
     @property
+    @cython.cfunc
     def closed(self):
         return self._closed or not len(self.browser.contexts) or not sum(map(lambda x: len(x.pages), self.browser.contexts))

@@ -3,6 +3,7 @@
 import asyncio
 import cython
 import multiprocessing as mp
+from playwright._impl._api_types import TimeoutError
 
 class Resources:
     _manager:mp.Manager
@@ -10,10 +11,10 @@ class Resources:
 
     def __init__(self, *args, **kwargs):
         self._manager = mp.Manager()
-        self.pool = self._manager.Pool(*args, **kwargs)
+        self.pool = self._manager.Pool(**kwargs)
         setattr(self, "Resources_init", True)
 
-    async def __aenter__(self):
+    async def __aenter__(self, *args, **kwargs):
         if(not hasattr(self, "Resources_init")): return
 
         f_name:str
@@ -42,7 +43,11 @@ class Resources:
     @cython.wraparound(False)
     @cython.cfunc
     async def override__manage_website(self, tab, url):
-        loaded_site = await tab.goto(url)
+        try:
+            loaded_site = await tab.goto(url)
+        except TimeoutError:
+            return 
+    
         if(loaded_site is not None): 
             loaded_site.domain = self.domain_regex.match(loaded_site.url).group(3)
 

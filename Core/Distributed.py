@@ -37,8 +37,8 @@ class Server(BaseManager, Crawler):
 
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
-        for _ in asyncio.as_completed([cl.__aexit__(self, exc_type, exc_val, exc_tb) for cl in Server.__mro__ if cl != Server and hasattr(cl, "__aexit__")]):
+    async def __aexit__(self, *args, **kwargs) -> None:
+        for _ in asyncio.as_completed([cl.__aexit__(self, *args, **kwargs) for cl in Server.__mro__ if cl != Server and hasattr(cl, "__aexit__")]):
             await _
 
         
@@ -114,8 +114,8 @@ class Client(BaseManager):
 
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
-        for _ in asyncio.as_completed([cl.__aexit__(self, exc_type, exc_val, exc_tb) for cl in Client.__mro__ if cl != Client and hasattr(cl, "__aexit__")]):
+    async def __aexit__(self, *args, **kwargs) -> None:
+        for _ in asyncio.as_completed([cl.__aexit__(self, *args, **kwargs) for cl in Client.__mro__ if cl != Client and hasattr(cl, "__aexit__")]):
             await _
 
         #self.join()

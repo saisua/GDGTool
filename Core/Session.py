@@ -18,10 +18,10 @@ class Session:
         self.contexts = kwargs.get("contexts", [])
         setattr(self, "Session_init", True)
 
-    async def __aenter__(self):
+    async def __aenter__(self, *args, **kwargs):
         if(not hasattr(self, "Session_init")): return
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, *args, **kwargs):
         if(not hasattr(self, "Session_init")): return
 
         if(self.autosave_session):
