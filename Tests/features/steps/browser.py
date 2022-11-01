@@ -19,7 +19,10 @@ def then_open_urls(context, browser):
 
 @behave.then("The {browser} will wait to be closed")
 def then_wait_closed(context, browser):
-    context.loop.run_until_complete(wait_until_closed(context))
+    try:
+        context.loop.run_until_complete(wait_until_closed(context))
+    except KeyboardInterrupt:
+        print("Interrupting...")
 
 @behave.then("The {browser} will close")
 def then_close_browser(context, browser):
