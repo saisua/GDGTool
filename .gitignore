@@ -1,5 +1,7 @@
 .pyd
+.so
 .cpp
+.c
 __pycache__/
 build/
 Data/
@@ -11,3 +13,7 @@ src/
 .lib
 .obj
 .test
+Settings/
+.xpi
+.vscode/
+.ipynb*

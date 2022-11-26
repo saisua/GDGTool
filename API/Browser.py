@@ -8,8 +8,12 @@ import asyncio
 import cython
 
 class Browser(Core_Browser):
-    _br_inited: bool = False
+    _br_inited: bool
+
+    
+
     def __init__(self, *args, **kwargs) -> None:
+        self._br_inited = False
         Core_Browser.__init__(self, *args, **kwargs)
 
     async def open_browser(self):
@@ -29,12 +33,12 @@ class Browser(Core_Browser):
         args = list(args)
 
         print(args, kwargs)
-        await argkwarg(0, "context", BrowserContext, self.new_context, args, kwargs)
-        websites = await argkwarg(1, "websites", None, set, args, kwargs)
+        await argkwarg(0, "context", BrowserContext, self.new_context, args, kwargs, force_async=True)
+        websites = await argkwarg(1, "websites", set, set, args, kwargs, force_type=True)
         for website in websites:
             self.check_valid_url(website)
 
-        print(f"open websites {args=}, {kwargs=}")
+        print(f"open websites {args}, {kwargs}")
         if(kwargs.get("load_wait", True)):
             async for website in Core_Browser.open_websites(self, *args, **kwargs):
                 yield website
@@ -51,6 +55,20 @@ class Browser(Core_Browser):
         return await Core_Browser.load_session(self, *args, **kwargs)    
         
 
+    async def search(self, *args, **kwargs):
+        self.check_browser_inited()
+
+        args = list(args)
+        keywords = await argkwarg(0, "keywords", list, None, args, kwargs)
+        await argkwarg(1, "search_in", str, lambda : "default", args, kwargs)
+        search_in = await argkwarg(2, "block_start_domains", bool, lambda : True, args, kwargs)
+
+        assert all((True for kw in keywords if type(kw) == str)), "All search keywords must be strings"
+        assert all(keywords), "All search keywords must not be empty"
+        #assert search_in in self.valid_search_contexts, "The search context is not valid"
+
+        return await Core_Browser.search(self, *args, **kwargs)
+    
     # Checks 
 
     def check_valid_url(self, url):

@@ -9,3 +9,4 @@ torch
 Pillow
 behave
 Cython
+undetected_playwright

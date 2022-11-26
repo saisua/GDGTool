@@ -10,51 +10,29 @@ import cython
 #from pysummarization.abstractabledoc.top_n_rank_abstractor import TopNRankAbstractor
 #from pysummarization.similarityfilter.jaccard import Jaccard
 
-from transformers import pipeline
-from gensim.summarization.summarizer import summarize
+import nltk
+nltk.download('wordnet')
+nltk.download('omw-1.4')
 
-model_name = "facebook/bart-large-cnn" # "t5-base"
-model_max_input_tokens = 1024
-summarizer = pipeline('summarization', model=model_name, tokenizer=model_name, framework="tf")
 
+import spacy
+nlp = spacy.load("en_core_web_md")
 
 from Core.Crawler import Crawler
 
-#model = "google/pegasus-billsum"
-#tokenizer = AutoTokenizer.from_pretrained(model)
-#model = AutoModelForSeq2SeqLM.from_pretrained(model)
-#abstractor = AutoAbstractor()
-#abstractor.tokenizable_doc = SimpleTokenizer()
-#abstractor.delimiter_list = ['.', '\n']
-#abstract_d = TopNRankAbstractor()
-
-whitespace_re = re.compile("\s\s+")
-
 @cython.cfunc
 def mp_summary(data):
-    data["summary"] = summarizer(
-        summarize(
-            whitespace_re.sub(
-                ' ',
-                data["text"]
-            ),
-            word_count=model_max_input_tokens
-        ),
-        min_length=30
-    )[0][0]["summary_text"]
-    #data["summary"] = abstractor.summarize(whitespace_re.sub(' ', data["text"]), abstract_d)["summarize_result"]
+    #data["summary"] = 
     data["locks"] -= 1 
 
 
-@cython.cfunc
 async def summary(crawler:Crawler, data:dict, page:object):
     if("text" in data):
         with data._mutex:
             data["locks"] = data.get("locks", 0) + 1
-        crawler.pool.apply_async(mp_summary, (data,))
+        crawler.resources_pool.apply_async(mp_summary, (data,))
         
-@cython.cfunc
-async def full_summary(crawler:Crawler, context):
+async def full_summary(crawler:Crawler):
     all_files = []
     full_data = []
 
@@ -80,17 +58,7 @@ async def full_summary(crawler:Crawler, context):
 
     await crawler.add_data("Full_summary", ("from_websites", all_files))
     await crawler.add_data("Full_summary", ("full_data", '\n'.join(full_data)))
-    await crawler.add_data("Full_summary", ("full_summary", 
-        summarizer(
-            summarize(
-                whitespace_re.sub(
-                    ' ',
-                    data["text"]
-                ),
-                word_count=model_max_input_tokens
-            ),
-            min_length=30
-        )[0][0]["summary_text"]
+    await crawler.add_data("Full_summary", ("full_summary", ''
     ))
 
 def setup(crawler:Crawler):

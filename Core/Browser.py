@@ -2,61 +2,99 @@
 
 import asyncio
 import cython
-from itertools import chain
-
 from playwright.async_api import async_playwright
+from undetected_playwright import stealth_async
 
 from Core.Storage import Storage
 from Core.Pipeline import Pipeline
 from Core.Session import Session
 from Core.Resources import Resources
+from Extensions.Search import Search
+
+from Core.utils.children import Children
 
 from Extensions.Rotating_proxies import Rotating_proxies
 
-@cython.cclass
-class Browser(Storage, Pipeline, Session, Resources, Rotating_proxies):
+
+class Browser(Children):
+    _storage: Storage
+    _pipeline: Pipeline
+    _session: Session
+    _resources: Resources
+    _rotating_proxies: Rotating_proxies
+    _search: Search
+
     __playwright_instance : object = None
     _playwright_manager : object = None
 
     browser : object = None
 
-    headless : cython.bint = True
+    browser_headless : cython.bint
     browser_name : str
+    browser_persistent: cython.bint
 
-    _use_proxies : cython.bint = False
-    _closed : cython.bint = True
+    _browser_use_proxies : cython.bint = False
+    _browser_closed : cython.bint = True
+
+    Browser_init: cython.bint
+    Browser_enter: cython.bint
 
     def __init__(self, *args, **kwargs) -> None:
-        self.headless = kwargs.pop("headless", self.headless)
+        if(self.Browser_init):
+            return 
+        print(f"{' '*kwargs.get('verbose_depth', 0)}Initializing Browser")
+        kwargs['verbose_depth'] = kwargs.get('verbose_depth', 0) + 1
+
+        self.browser_headless = kwargs.pop("headless", True)
         self.browser_name = kwargs.pop("browser_name", "chromium")
+        self.browser_persistent = kwargs.pop("browser_persistent", False)
 
         if(kwargs.pop("use_storage", True)):
-            Storage.__init__(self, remove_old_data=kwargs.pop("remove_old_data", False), folder_name=kwargs.pop("storage_name", None))
+            self._storage = Storage(remove_old_data=kwargs.pop("remove_old_data", False), folder_name=kwargs.pop("storage_name", None), **kwargs)
+        else:
+            self._storage = None
         if(kwargs.pop("use_pipeline", True)):
-            Pipeline.__init__(self)
+            self._pipeline = Pipeline(*args, **kwargs)
+        else:
+            self._pipeline = None
         if(kwargs.pop("use_session", True)):
-            Session.__init__(self, self, *args, **kwargs)
+            self._session = Session(self, *args, **kwargs)
+        else:
+            self._session = None
         if(kwargs.pop("use_resources", True)):
-            Resources.__init__(self, *args, **kwargs)
+            self._resources = Resources(*args, **kwargs)
+        else:
+            self._resources = None
         if(kwargs.pop("use_rotating_proxies", False)):
-            Rotating_proxies.__init__(self, self, *args, **kwargs)
-            self._use_proxies = True
-        setattr(self, "Browser_init", True)
+            self._rotating_proxies = Rotating_proxies(self, *args, **kwargs)
+            self._browser_use_proxies = True
+        else:
+            self._rotating_proxies = None
+            self._browser_use_proxies = False
+        if(kwargs.pop("use_search", True)):
+            self._search = Search(self, *args, **kwargs)
+        else:
+            self._search = None
+        self.Browser_init = True
+        self.Browser_enter = False
+
+        super().__init__((self._storage, self._pipeline, self._session, self._resources, self._rotating_proxies, self._search))
 
     async def __aenter__(self, *args, **kwargs) -> object:
-        for _ in asyncio.as_completed([self.open(*args, **kwargs), *[cl.__aenter__(self) for cl in Browser.__mro__ if cl != Browser and hasattr(cl, "__aenter__")]]):
-            await _
+        if(self.Browser_enter):
+            return
+        await Browser.open(self, *args, **kwargs)
 
         print("[+] Browser set up")
         return self
 
     async def __aexit__(self, *args, **kwargs) -> None:
-        for _ in asyncio.as_completed([cl.__aexit__(self, *args, **kwargs) for cl in Browser.__mro__ if cl != Browser and hasattr(cl, "__aexit__")]):
-            await _
-        await self.close()
+        await self.close(*args, **kwargs)
 
-    async def open(self) -> None:
-        if(not hasattr(self, "Browser_init")): return
+    async def open(self, *args, **kwargs) -> None:
+        if(not self.Browser_init): return
+
+        self.Browser_enter = True
 
         if(self.__playwright_instance is None):
             self.__playwright_instance = async_playwright()
@@ -65,51 +103,93 @@ class Browser(Storage, Pipeline, Session, Resources, Rotating_proxies):
 
         if(self.browser is None):
             dyn_kwargs:dict = {}
-            if(self._use_proxies):
+            args:list = []
+            if(self._browser_use_proxies):
                 dyn_kwargs["proxy"]={"server": "per-context"}
-                                                                                        
-            self.browser = await getattr(self._playwright_manager, self.browser_name).launch(
-                                                                                        headless=self.headless,
-                                                                                        **dyn_kwargs
-                                                                                        )
+
+            if(self.browser_name == "firefox"):
+                #args.extend(("-start-debugger-server", "12345"))
+                dyn_kwargs["firefox_user_prefs"] = {
+                    'devtools.debugger.remote-enabled': True,
+                    'devtools.debugger.prompt-connection': False,
+                }
+            elif(self.browser_name == "chromium"):
+                args.extend((
+                    #f"--disable-extensions-except=Settings/Addons/DuckDuckGo-Privacy-Essentials.crx",
+                    f"--load-extension=Settings/Addons/DuckDuckGo-Privacy-Essentials.crx",
+                ))
+
+            if(self.browser_persistent):
+                launch = "launch_persistent_context"
+                dyn_kwargs["user_data_dir"] = f"Settings/Persistent/{self.browser_name}"
+            else:
+                launch = "launch"
+
+            self.browser = await getattr(
+                getattr(
+                    self._playwright_manager,
+                    self.browser_name
+                ),
+                launch
+            )(
+                args=args,
+                headless=self.browser_headless,
+                **dyn_kwargs
+            )
+
+            if(self.browser_name == "firefox"):
+                # about:debugging#/runtime/this-firefox
+                page = await self.browser.new_page()
+                await page.goto("about:preferences#search", wait_until="domcontentloaded")
+                await page.keyboard.press("Tab")
+                await page.keyboard.press("Tab")
+                await page.keyboard.press("ArrowDown")
+                await page.keyboard.press("ArrowDown")
+                await page.keyboard.press("ArrowDown")
+                await page.close()
 
             print(self.browser)
         else:
             print("Browser exists")
 
-        if(hasattr(self, "Rotating_proxies_init")):
+        if(self.Rotating_proxies_init):
             await self.get_proxies_online()
             
-        self._closed = False
+        self._browser_closed = False
 
-    async def close(self) -> None:
-        if(not hasattr(self, "Browser_init")): return
+        await super().__aenter__(*args, **kwargs)
 
-        for post_f in self._post_management:
-            await post_f(self)
+    async def close(self, *args, **kwargs) -> None:
+        if(not self.Browser_init): return
+
+        if(self.Pipeline_init):
+            for post_f in self._post_management:
+                await post_f(self)
+
+        await super().__aexit__(*args, **kwargs)
 
         await self.browser.close()
         await self.__playwright_instance.__aexit__()
         
-        self._closed = True
+        self._browser_closed = True
+        self.Browser_enter = False
 
-    @cython.cfunc
     async def new_context(self, *args:tuple, **kwargs:dict) -> object:
         context:object = await self.browser.new_context(*args, **kwargs)
+        await stealth_async(context)
 
-        event:str
-        handler:object
-        for (event, handler) in self._event_management:
-            context.on(event, handler(self))
-        route:str
-        for (route, handler) in self._route_management:
-            await context.route(route, handler(self))
+        if(self.Pipeline_init):
+            event:str
+            handler:object
+            for (event, handler) in self._event_management:
+                context.on(event, handler(self))
+            route:str
+            for (route, handler) in self._route_management:
+                await context.route(route, handler(self))
 
         return context
 
-    @cython.inline
-    @cython.cfunc
-    async def open_websites(self, context:object, websites:set, override:cython.bint=True, load_wait:cython.bint=True) -> object:
+    async def open_websites(self, context:object, websites:set, override:cython.bint=True, load_wait:cython.bint=True, wait_until:str='networkidle') -> object:
         pages:list
         if(not override):
             pages = [(await context.new_page()) for _ in range(len(websites))]
@@ -121,13 +201,12 @@ class Browser(Storage, Pipeline, Session, Resources, Rotating_proxies):
         page:object
         site:str
         if(load_wait):
-            for page in asyncio.as_completed([page.goto(site, timeout=5000) for page, site in zip(pages, websites)]):
+            for page in asyncio.as_completed([page.goto(site, timeout=5000, wait_until=wait_until) for page, site in zip(pages, websites)]):
                 yield page
         else:
             for page, site in zip(pages, websites):
-                asyncio.create_task(page.goto(site, timeout=0))
+                asyncio.create_task(page.goto(site, timeout=0, wait_until=wait_until))
 
-    @cython.ccall
     async def load_session(self, session_name:str, *args, context:object=None, load_wait:bool=False, **kwargs) -> object:
         if(context is None):
             context = await self.new_context()
@@ -142,12 +221,10 @@ class Browser(Storage, Pipeline, Session, Resources, Rotating_proxies):
 
         return context
     
-    @cython.cfunc
-    async def wait_until_closed(self):
-        while(not self.closed):
+    async def wait_until_closed(self) -> None:
+        while(self.closed() != True):
             await asyncio.sleep(3)
 
     @property
-    @cython.cfunc
-    def closed(self):
-        return self._closed or not len(self.browser.contexts) or not sum(map(lambda x: len(x.pages), self.browser.contexts))
+    def closed(self) -> cython.bint:
+        return self._browser_closed or not len(self.browser.contexts) or not sum(map(lambda x: len(x.pages), self.browser.contexts))

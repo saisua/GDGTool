@@ -1,7 +1,7 @@
 from inspect import iscoroutinefunction
 
 
-async def argkwarg(num:int, name:str, cls, default_call, args, kwargs, can_be_none=False,):
+async def argkwarg(num:int, name:str, cls, default_call, args, kwargs, can_be_none=False, force_type=False, force_async=False):
     print(f"Check var {name}")
     in_kwargs = name in kwargs
 
@@ -11,18 +11,30 @@ async def argkwarg(num:int, name:str, cls, default_call, args, kwargs, can_be_no
         
         if(in_kwargs):
             print(f"Kwargs -> args[{num}]")
-            arg = args[num] = kwargs.pop(name)
+            arg = kwargs.pop(name)
+
+            if(force_type):
+                arg = cls(arg)
+
+            args[num] = arg
         else:
             arg = args[num]
             if(arg is None):
                 if(not can_be_none or default_call is not None):
                     assert default_call is not None, f"{name} must not be None"
-                    print(f"Default -> args[{num}]")
 
-                    if(iscoroutinefunction(default_call)):
-                        arg = args[num] = await default_call()
+                    if(force_async or iscoroutinefunction(default_call)):
+                        print(f"Default -> await args[{num}]")
+                        arg = await default_call()
                     else:
-                        arg = args[num] = default_call()
+                        print(f"Default -> args[{num}]")
+                        arg = default_call()
+
+                    if(force_type):
+                        arg = cls(arg)
+
+                    args[num] = arg
+
                 else:
                     print(f"None -> args[{num}]")
 
@@ -37,12 +49,18 @@ async def argkwarg(num:int, name:str, cls, default_call, args, kwargs, can_be_no
         if(kwarg is None):
             if(not can_be_none or default_call is not None):
                 assert default_call is not None, f"{name} must not be None"
-                print(f"Default -> kwargs[{name}]")
 
-                if(iscoroutinefunction(default_call)):
-                    kwarg = kwargs[name] = await default_call()
+                if(force_async or iscoroutinefunction(default_call)):
+                    print(f"Default -> await kwargs[{name}]")
+                    kwarg = await default_call()
                 else:
-                    kwarg = kwargs[name] = default_call()
+                    print(f"Default -> kwargs[{name}]")
+                    kwarg = default_call()
+
+                if(force_type):
+                    kwarg = cls(kwarg)
+
+                kwargs[name] = kwarg
             else:
                 print(f"None -> args[{num}]")
         elif(cls is not None):
@@ -51,7 +69,7 @@ async def argkwarg(num:int, name:str, cls, default_call, args, kwargs, can_be_no
 
         return kwarg
 
-def sargkwarg(num:int, name:str, cls, default_call, args, kwargs, can_be_none=False):
+def sargkwarg(num:int, name:str, cls, default_call, args, kwargs, can_be_none=False, force_type=False):
     print(f"Check var {name}")
     in_kwargs = name in kwargs
 
@@ -61,7 +79,12 @@ def sargkwarg(num:int, name:str, cls, default_call, args, kwargs, can_be_none=Fa
         
         if(in_kwargs):
             print(f"Kwargs -> args[{num}]")
-            arg = args[num] = kwargs.pop(name)
+            arg = kwargs.pop(name)
+
+            if(force_type):
+                arg = cls(arg)
+
+            args[num] = arg
         else:
             arg = args[num]
             if(arg is None):
@@ -69,7 +92,12 @@ def sargkwarg(num:int, name:str, cls, default_call, args, kwargs, can_be_none=Fa
                     assert default_call is not None, f"{name} must not be None"
                     print(f"Default -> args[{num}]")
 
-                    arg = args[num] = default_call()
+                    arg = default_call()
+
+                    if(force_type):
+                        arg = cls(arg)
+
+                    args[num] = arg
                 else:
                     print(f"None -> args[{num}]")
             elif(cls is not None):
@@ -85,7 +113,12 @@ def sargkwarg(num:int, name:str, cls, default_call, args, kwargs, can_be_none=Fa
                 assert default_call is not None, f"{name} must not be None"
                 print(f"Default -> kwargs[{name}]")
 
-                kwarg = kwargs[name] = default_call()
+                kwarg = default_call()
+
+                if(force_type):
+                    kwarg = cls(kwarg)
+
+                kwargs[name] = kwarg
             else:
                 print(f"None -> kwargs[{name}]")
         elif(cls is not None):

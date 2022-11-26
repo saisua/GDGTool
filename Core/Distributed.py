@@ -10,19 +10,23 @@ from Core.Browser import Browser
 from Core.Crawler import Crawler
 
 class Server(BaseManager, Crawler):
-    _manager:object
-    _loop:object
+    _server_loop:object
 
-    _exposed:set = {"get_sites", "get_exposed", "_register", "get_crawler", "get_attr", "run_async"}
+    _server_exposed:set = {"get_sites", "get_exposed", "_register", "get_crawler", "get_attr", "run_async"}
+
+    Server_init:cython.bint
+
+    
+
     def __init__(self, sites:dict={}, address=('localhost', 12412), authkey=b"None", *args, **kwargs):
         #Crawler.__init__(self, sites, *args, **kwargs)
         self._manager = Manager()
-        self._loop = asyncio.get_event_loop()
-        self.sites = self._manager.dict(sites)
+        self._server_loop = asyncio.get_event_loop()
+        self.crawler_sites = self._manager.dict(sites)
 
         Crawler.__init__(self, *args, **kwargs)
         BaseManager.__init__(self, address=address, authkey=authkey)
-        setattr(self, "Server_init", True)
+        self.Server_init = True
 
     async def __aenter__(self, *args, **kwargs) -> object:
         for _ in asyncio.as_completed([cl.__aenter__(self) for cl in Server.__mro__ if cl != Server and hasattr(cl, "__aenter__")]):
@@ -44,9 +48,9 @@ class Server(BaseManager, Crawler):
         
 
     def _get_sites(self):
-        return self.sites
+        return self.crawler_sites
     def _get_exposed(self):
-        return self._exposed
+        return self._server_exposed
     def _get_crawler(self):
         return self
     def _get_attr(self, attr):
@@ -56,9 +60,9 @@ class Server(BaseManager, Crawler):
         asyncio.run(getattr(self, f_name)(*args, **kwargs))
 
     def _register(self, f_name):
-        if(f_name in self._exposed): return
+        if(f_name in self._server_exposed): return
         c_name = f"_{f_name}"
-        self._exposed.add(c_name)        
+        self._server_exposed.add(c_name)        
 
         f = getattr(self, f_name)
 
@@ -66,7 +70,7 @@ class Server(BaseManager, Crawler):
             def handle_f(*args, **kwargs):
                 #asyncio.set_event_loop(self._loop)
                 #return self._loop.run_until_complete(getattr(self, f_name)(*args, **kwargs))
-                return asyncio.run_coroutine_threadsafe(getattr(self, f_name)(*args, **kwargs),self._loop).result()
+                return asyncio.run_coroutine_threadsafe(getattr(self, f_name)(*args, **kwargs),self._server_loop).result()
 
             self.register(c_name, handle_f)
         else:
@@ -84,7 +88,7 @@ class Client(BaseManager):
     def __init__(self, sites:dict={}, address=('localhost', 12412), authkey=b"None", *args, **kwargs):
         #Crawler.__init__(self, *args, **kwargs)
         BaseManager.__init__(self, address=address, authkey=authkey)
-        setattr(self, "Client_init", True)
+        self.Client_init = True
 
     async def __aenter__(self, *args, **kwargs) -> object:
         for _ in asyncio.as_completed([cl.__aenter__(self) for cl in Client.__mro__ if cl != Client and hasattr(cl, "__aenter__")]):

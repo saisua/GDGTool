@@ -16,13 +16,11 @@ print("Compiling the program into Cython...\n\n###")
 setup(
     name='Scraper',
     ext_modules=cythonize([
-                            "Core/Data_storage.py",
-                            "Core/Browser.py",
-                            "Core/Crawler.py",
-                            "Tests/basic_open_browser.py",
-                            "Tests/basic_crawl_websites.py",
+                            "Core/*.py",
+                            "Extensions/*.py",
+                            "cli.py"
                             ],
-                            language="c++", language_level=3),
+                            language_level=3),
     zip_safe=False,
     extra_compile_args=["-Ofast", 
                         "-march=native",

@@ -5,17 +5,25 @@ import cython
 import multiprocessing as mp
 from playwright._impl._api_types import TimeoutError
 
+import inspect
+
 class Resources:
     _manager:mp.Manager
-    pool:mp.Pool
+    resources_pool:mp.Pool
+
+    Resources_init:cython.bint
+
+    
 
     def __init__(self, *args, **kwargs):
+        print(f"{' '*kwargs.get('verbose_depth', 0)}Initializing Resources")
+
         self._manager = mp.Manager()
-        self.pool = self._manager.Pool(**kwargs)
-        setattr(self, "Resources_init", True)
+        self.resources_pool = self._manager.Pool(**{kw:v for kw, v in kwargs.items() if kw in {'processes'}})
+        self.Resources_init = True
 
     async def __aenter__(self, *args, **kwargs):
-        if(not hasattr(self, "Resources_init")): return
+        if(not self.Resources_init): return
 
         f_name:str
         for overwrite_f in dir(Resources)[::-1]:
@@ -32,16 +40,11 @@ class Resources:
             elif(overwrite_f.startswith("__")): break
 
     async def __aexit__(self, *args, **kwargs):
-        if(not hasattr(self, "Resources_init")): return
+        if(not self.Resources_init): return
 
-        self.pool.close()
-        self.pool.join()
+        self.resources_pool.close()
+        self.resources_pool.join()
 
-    @cython.inline
-    @cython.cdivision(True)
-    @cython.boundscheck(False)
-    @cython.wraparound(False)
-    @cython.cfunc
     async def override__manage_website(self, tab, url):
         try:
             loaded_site = await tab.goto(url)

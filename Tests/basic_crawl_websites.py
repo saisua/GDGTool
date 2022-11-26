@@ -13,7 +13,7 @@ async def basic_crawl_websites():
     }
 
     async with Crawler(sites, remove_old_data=True, use_resources=False, use_session=False, headless=False) as cr:
-        await cr.crawl(levels=1, max_tabs=20, num_contexts=1)
+        await cr.crawl(levels=0, max_tabs=20, num_contexts=1)
 
 if(__name__ == "__main__"):
     asyncio.run(basic_crawl_websites())

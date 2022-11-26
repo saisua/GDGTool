@@ -40,7 +40,7 @@ async def full_pipeline():
     start_time = datetime.now()
     await crawler.crawl(levels=1, max_tabs=50, num_contexts=5)
     print(f"Crawling time: {datetime.now() - start_time}")
-    print(f"Got {len(crawler.visited_urls)} URLs")
+    print(f"Got {len(crawler.crawler_visited_urls)} URLs")
     await crawler.close()
 
 if(__name__ == "__main__"):

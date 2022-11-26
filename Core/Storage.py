@@ -19,26 +19,37 @@ def default(obj):
     raise TypeError("Object of type '%s' is not JSON serializable" % type(obj).__name__)
 
 class Storage:
-    storage_base_path:str = "Data/"
-    storage_path:str
+    storage_base_path: str
+    storage_path: str
 
-    storage_library = json
-    max_memory_domains:cython.uint
+    storage_library: object
+    max_memory_domains: cython.uint
 
-    storage_data_repr:dict = {}
-    file_cache:dict = {}
-    storage_data:dict = {}
+    storage_data_repr: dict
+    file_cache: dict
+    storage_data: dict
 
-    to_filename_re:re.Pattern = re.compile(r"[^\w\d_\-.]+")
+    to_filename_re:re.Pattern
+
+    Storage_init:cython.bint
 
     def __init__(self, *args, remove_old_data:bool=False, folder_name:str=None, max_memory_domains:cython.uint=10, **kwargs) -> None:
+        print(f"{' '*kwargs.get('verbose_depth', 0)}Initializing Storage")
+
         if(not remove_old_data):
             self.fill_file_cache()
+
+        self.storage_base_path = "Data/"
+        self.storage_library = json
+        self.storage_data_repr = dict()
+        self.file_cache = dict()
+        self.storage_data = dict()
+        self.to_filename_re = re.compile(r"[^\w\d_\-.]+")
 
         self.storage_path = self.storage_base_path + (folder_name or f"{str(datetime.now()).split('.')[0]}/")
         self.max_memory_domains = max_memory_domains
 
-        setattr(self, "Storage_init", True)
+        self.Storage_init = True
 
     async def __aenter__(self, *args, **kwargs):
         try:
@@ -132,7 +143,8 @@ class Storage:
         return objs
 
     def fill_file_cache(self) -> None:
-        folders_iter = os.walk(self.storage_path)
+        if(self.storage_path is not None):
+            folders_iter = os.walk(self.storage_path)
 
-        for folder in next(folders_iter)[1]:
-            self.file_cache[folder] = set(next(folders_iter)[2])
+            for folder in next(folders_iter)[1]:
+                self.file_cache[folder] = set(next(folders_iter)[2])

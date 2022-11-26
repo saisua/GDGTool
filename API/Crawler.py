@@ -12,9 +12,13 @@ import asyncio
 import cython
 
 class Crawler(API_Browser, Core_Crawler):
-    _cr_inited: bool = False
+    _cr_inited: bool
+
+    
 
     def __init__(self, *args, **kwargs):
+        self._cr_inited = False
+        
         args = list(args)
         sites = sargkwarg(0, "sites", dict, dict, args, kwargs)
         for site_list in sites:
@@ -41,7 +45,6 @@ class Crawler(API_Browser, Core_Crawler):
 
         self._cr_inited = False
     
-    @cython.cfunc
     async def start_open_tabs(self, *args, **kwargs) -> cython.void:
         self.check_crawler_inited()
 
@@ -69,20 +72,6 @@ class Crawler(API_Browser, Core_Crawler):
             assert isinstance(site, str), "All added sites must be strings"
 
         return await Core_Crawler.add_sites(self, *args, **kwargs)
-
-    async def search(self, *args, **kwargs):
-        self.check_crawler_inited()
-
-        args = list(args)
-        keywords = await argkwarg(0, "keywords", list, None, args, kwargs)
-        await argkwarg(1, "search_in", str, lambda : "default", args, kwargs)
-        search_in = await argkwarg(2, "block_start_domains", bool, lambda : True, args, kwargs)
-
-        assert all((True for kw in keywords if type(kw) == str)), "All search keywords must be strings"
-        assert all(keywords), "All search keywords must not be empty"
-        assert search_in in self.valid_search_contexts, "The search context is not valid"
-
-        return await Core_Crawler.search(self, *args, **kwargs)
 
     async def crawl(self, *args, **kwargs) -> object:
         self.check_crawler_inited()
