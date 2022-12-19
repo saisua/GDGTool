@@ -5,12 +5,12 @@ import os, sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from Core.Crawler import Crawler
-from Plugins.Summary import setup
+from Plugins.Information_graph import setup
 
 async def basic_summarization():
     search = "Southbridge chipset"
     # Resources must be True
-    crawler = Crawler(storage_name=f"{search} summarization", remove_old_data=True, headless=False)
+    crawler = Crawler(storage_name=f"{search} information graph", remove_old_data=True, headless=False)
     setup(crawler)
     crawler.add_pipe("routing",  ("**", Crawler.block_resources), "Block resources")
     await crawler.search_general(search)

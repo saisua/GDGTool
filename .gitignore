@@ -17,3 +17,5 @@ Settings/
 .xpi
 .vscode/
 .ipynb*
+External/*/
+scraper_volume/

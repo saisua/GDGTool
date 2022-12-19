@@ -5,7 +5,7 @@ from typing import *
 
 
 class Session:
-    session_child:object
+    session_parent:object
     session_name:str
     autosave_session:cython.bint
 
@@ -14,10 +14,10 @@ class Session:
 
     
 
-    def __init__(self, child, *args, **kwargs):
+    def __init__(self, parent, *args, **kwargs):
         print(f"{' '*kwargs.get('verbose_depth', 0)}Initializing Session")
 
-        self.session_child = child
+        self.session_parent = parent
         self.session_name = kwargs.pop("name", "session")
         self.autosave_session = kwargs.pop("autosave_session", False)
 
@@ -32,10 +32,10 @@ class Session:
 
         if(self.autosave_session):
             # Might be best to store too the visited_urls if it exists
-            await self.session_child.update_data("Session", [
+            await self.session_parent.update_data("Session", [
                     (f"{self.session_name}.{cnum}", {page.url for page in context.pages})
-                        for cnum, context in enumerate(self.session_child.browser.contexts)
+                        for cnum, context in enumerate(self.session_parent.browser.contexts)
             ])
 
     async def _load_session(self, session_name:str) -> List[str]:
-        return self.session_child.load_data("Session", session_name)
+        return self.session_parent.load_data("Session", session_name)

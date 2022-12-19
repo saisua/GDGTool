@@ -19,6 +19,7 @@ def default(obj):
     raise TypeError("Object of type '%s' is not JSON serializable" % type(obj).__name__)
 
 class Storage:
+    storage_browser_parent: object
     storage_base_path: str
     storage_path: str
 
@@ -31,18 +32,25 @@ class Storage:
 
     to_filename_re:re.Pattern
 
+    storage_dict_cls: object
+
     Storage_init:cython.bint
 
-    def __init__(self, *args, remove_old_data:bool=False, folder_name:str=None, max_memory_domains:cython.uint=10, **kwargs) -> None:
+    def __init__(self, browser, *args, remove_old_data:bool=False, folder_name:str=None, max_memory_domains:cython.uint=10, **kwargs) -> None:
         print(f"{' '*kwargs.get('verbose_depth', 0)}Initializing Storage")
 
         if(not remove_old_data):
             self.fill_file_cache()
 
-        self.storage_base_path = "Data/"
+        self.storage_base_path = "./Data/"
         self.storage_library = json
         self.storage_data_repr = dict()
         self.file_cache = dict()
+        self.storage_browser_parent = browser
+        if(self.storage_browser_parent._resources is not None):
+            self.storage_dict_cls = self.storage_browser_parent._resources._manager.dict
+        else:
+            self.storage_dict_cls = dict
         self.storage_data = dict()
         self.to_filename_re = re.compile(r"[^\w\d_\-.]+")
 

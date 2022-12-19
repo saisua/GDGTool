@@ -11,6 +11,8 @@ from xml import dom
 from math import ceil
 import numpy as np
 
+from urllib.request import urlopen
+
 from playwright.async_api import TimeoutError
 
 from Core.Browser import Browser
@@ -25,6 +27,7 @@ class Crawler(Browser):
 
     crawler_visited_urls: set # Set[str]
     crawler_blocked_domains: set # Set[str]
+    crawler_valid_robots_domains: dict # Dict[str: Set[str]]
 
     crawler_website_data: dict
 
@@ -36,6 +39,7 @@ class Crawler(Browser):
     # Regex to find the domain of a URL. 
     # per example: https://desktop.github.com/test -> github.com
     crawler_domain_regex: re.Pattern = re.compile(r"^(https?://)?([^/]+\.)?([^/]+\.[^/]+).*")
+    crawler_robots_regex: re.Pattern = re.compile(r"disallowed(\W|\s)\s*((\w|\/)+)", re.IGNORECASE)
 
     Crawler_init: cython.bint
     Crawler_enter: cython.bint
@@ -55,6 +59,7 @@ class Crawler(Browser):
         self.crawler_sites = sites
         self.crawler_visited_urls = kwargs.pop("visited_urls", set())
         self.crawler_blocked_domains = kwargs.pop("blocked_domains", set(['reddit.com']))
+        self.crawler_valid_robots_domains = dict()
         self.add_pipe("page", Crawler.get_urls, "Get all URLs (necessary for crawling)")
 
         self._crawler_avaliable_tabs = []
@@ -111,7 +116,7 @@ class Crawler(Browser):
                 else:
                     self.crawler_sites.get(domain).add(site)
 
-    async def _manage_website(self, tab:object, url:str):
+    async def _manage_website(self, tab:object, url:str, *, enforce_robots:cython.bint=False):
         try:
             loaded_site:object = await tab.goto(url, wait_until="networkidle")
                 
@@ -119,38 +124,58 @@ class Crawler(Browser):
                 loaded_site = await tab.goto(url, wait_until="networkidle")
         except TimeoutError:
             print(f"[-] URL \"{url}\" Failed loading by timeout")
+            self._crawler_avaliable_tabs.append(tab)
+            return
 
         self._crawler_rotate_request = True
 
         loaded_site.domain = self.crawler_domain_regex.match(loaded_site.url).group(3)
 
-        website_data:dict = {}
-        repeat:cython.bint = True
+        if(self._storage is not None):
+            website_data = self._storage.storage_dict_cls()
+        else:
+            website_data = dict() 
 
-        # In case of dynamically loaded websites
-        for _ in asyncio.as_completed([page_alter(self, website_data, loaded_site) for page_alter in self._page_management]):
-            await _
-        for _ in asyncio.as_completed([data_alter(self, website_data, loaded_site) for data_alter in self._data_management]):
-            await _
+        try:
+            # In case of dynamically loaded websites
+            for _ in asyncio.as_completed([page_alter(self, website_data, loaded_site) for page_alter in self._page_management]):
+                await _
+            for _ in asyncio.as_completed([data_alter(self, website_data, loaded_site) for data_alter in self._data_management]):
+                await _
 
-        if("urls" in website_data):
-            site:str
-            for site in website_data["urls"]:
-                if(site not in self.crawler_visited_urls):
-                    self.crawler_visited_urls.add(site)
+            if("urls" in website_data):
+                site:str
+                for site in website_data["urls"]:
+                    if(site not in self.crawler_visited_urls):
+                        self.crawler_visited_urls.add(site)
 
-                    match:object = self.crawler_domain_regex.search(site)
-                    if(match):
-                        domain:str = match.group(3)
-                        if(domain not in self.crawler_blocked_domains):
-                            if(domain not in self.crawler_sites):
-                                self.next_level_sites[domain] = {site}
-                            else:
-                                self.next_level_sites[domain].add(site)
-        
-        asyncio.create_task(self.add_data(loaded_site.domain, (loaded_site.url, website_data)))
+                        if(enforce_robots):
+                            robots_rules: set = self.crawler_valid_robots_domains.get(domain)
+                            if(robots_rules is None):
+                                # Register robots.txt rules
+                                robots_rules = self.check_robots(domain)
 
-        self._crawler_avaliable_tabs.append(tab)
+                            # https:// = 8 characters
+                            site_path = site[site.find('/', 8):]
+                            for rule in robots_rules:
+                                if(site_path.startswith(rule)):
+                                    # Blocked path
+                                    continue
+
+                        match:object = self.crawler_domain_regex.search(site)
+                        if(match):
+                            domain:str = match.group(3)
+                            if(domain not in self.crawler_blocked_domains):
+                                if(domain not in self.crawler_sites):
+                                    self.next_level_sites[domain] = {site}
+                                else:
+                                    self.next_level_sites[domain].add(site)
+            
+            asyncio.create_task(self.add_data(loaded_site.domain, (loaded_site.url, website_data)))
+        except Exception as e:
+            print(f"Error on page {tab}: {e}")
+        finally:
+            self._crawler_avaliable_tabs.append(tab)
 
     async def get_crawling_urls(self, num_tabs:cython.uint) -> list:
         result:list = []
@@ -200,10 +225,10 @@ class Crawler(Browser):
                         num_contexts:cython.uint=1, 
                         max_tabs:cython.uint=25, 
                         close_contexts:cython.bint=False,
-                        max_websites:cython.uint=-1
+                        max_websites:cython.uint=-1,
+                        enforce_robots:cython.bint=False
                         ) -> object:
         if(not contexts):
-            print(num_contexts)
             _:cython.uint
             dyn_attr:dict = {}
             for _ in range(num_contexts):
@@ -211,9 +236,9 @@ class Crawler(Browser):
                     dyn_attr["proxy"] = {"server":self.new_proxy()}
 
                 nc = await self.new_context(
-                                                        accept_downloads=False,
-                                                        **dyn_attr
-                                                    )
+                                            accept_downloads=False,
+                                            **dyn_attr
+                                        )
 
                 contexts.append(nc)
                 print("Added")
@@ -265,7 +290,7 @@ class Crawler(Browser):
                     urls = altered_urls
 
                 for tab, url in zip(tabs, urls):
-                    asyncio.create_task(self._manage_website(tab, url))
+                    asyncio.create_task(self._manage_website(tab, url, enforce_robots=enforce_robots))
 
                 if(not self._crawler_rotate_in_progress and self._crawler_rotate_request):
                     self._crawler_rotate_in_progress = True
@@ -294,13 +319,23 @@ class Crawler(Browser):
         print("\n\nCrawling completed")
 
         for context in contexts:
+            print("Running end pipeline:", flush=True)
             for end_f in self._end_management:
+                print(f" {end_f.__name__}")
                 await end_f(self, context)
 
             if(close_contexts):
                 await context.close()
         
         return contexts
+
+    def check_robots(self, domain) -> set:
+        rules_set: set
+        with urlopen(f"https://{domain}/robots.txt") as stream:
+            rules_set = set(self.crawler_robots_regex.findall(stream.read().decode("utf-8")))
+
+        self.crawler_valid_robots_domains[domain] = rules_set
+        return rules_set
 
     @staticmethod
     async def get_urls(self, data:dict, page:object):

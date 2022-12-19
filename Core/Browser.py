@@ -2,6 +2,7 @@
 
 import asyncio
 import cython
+from playwright._impl._browser import Browser
 from playwright.async_api import async_playwright
 from undetected_playwright import stealth_async
 
@@ -14,6 +15,7 @@ from Extensions.Search import Search
 from Core.utils.children import Children
 
 from Extensions.Rotating_proxies import Rotating_proxies
+from Extensions import Macros
 
 
 class Browser(Children):
@@ -24,20 +26,24 @@ class Browser(Children):
     _rotating_proxies: Rotating_proxies
     _search: Search
 
-    __playwright_instance : object = None
-    _playwright_manager : object = None
+    __playwright_instance: object
+    _playwright_manager: object
 
-    browser : object = None
+    browser: Browser
 
-    browser_headless : cython.bint
-    browser_name : str
+    browser_headless: cython.bint
+    browser_name: str
     browser_persistent: cython.bint
+    browser_install_addons: cython.bint
 
-    _browser_use_proxies : cython.bint = False
-    _browser_closed : cython.bint = True
+    _browser_use_proxies: cython.bint
+    _browser_closed: cython.bint = True
+    _browser_disconected: cython.bint
 
     Browser_init: cython.bint
     Browser_enter: cython.bint
+
+    _browser_open_wait_until: str
 
     def __init__(self, *args, **kwargs) -> None:
         if(self.Browser_init):
@@ -48,30 +54,41 @@ class Browser(Children):
         self.browser_headless = kwargs.pop("headless", True)
         self.browser_name = kwargs.pop("browser_name", "chromium")
         self.browser_persistent = kwargs.pop("browser_persistent", False)
+        self.browser_install_addons = kwargs.pop("install_addons", True)
 
-        if(kwargs.pop("use_storage", True)):
-            self._storage = Storage(remove_old_data=kwargs.pop("remove_old_data", False), folder_name=kwargs.pop("storage_name", None), **kwargs)
-        else:
-            self._storage = None
-        if(kwargs.pop("use_pipeline", True)):
-            self._pipeline = Pipeline(*args, **kwargs)
-        else:
-            self._pipeline = None
-        if(kwargs.pop("use_session", True)):
-            self._session = Session(self, *args, **kwargs)
-        else:
-            self._session = None
-        if(kwargs.pop("use_resources", True)):
+        self.__playwright_instance = None
+        self._playwright_manager = None
+        self.browser = None
+        self._browser_use_proxies = False
+        self._browser_closed = True
+        self._browser_disconected = True
+        self._browser_open_wait_until = kwargs.get("open_wait_until") or (
+            "networkidle" if self.browser_install_addons else "load"
+        )
+
+        if(kwargs.get("use_resources", True)):
             self._resources = Resources(*args, **kwargs)
         else:
             self._resources = None
-        if(kwargs.pop("use_rotating_proxies", False)):
+        if(kwargs.get("use_storage", True)):
+            self._storage = Storage(self, remove_old_data=kwargs.pop("remove_old_data", False), folder_name=kwargs.pop("storage_name", None), **kwargs)
+        else:
+            self._storage = None
+        if(kwargs.get("use_session", True)):
+            self._session = Session(self, *args, **kwargs)
+        else:
+            self._session = None
+        if(kwargs.get("use_pipeline", True)):
+            self._pipeline = Pipeline(*args, **kwargs)
+        else:
+            self._pipeline = None
+        if(kwargs.get("use_rotating_proxies", False)):
             self._rotating_proxies = Rotating_proxies(self, *args, **kwargs)
             self._browser_use_proxies = True
         else:
             self._rotating_proxies = None
             self._browser_use_proxies = False
-        if(kwargs.pop("use_search", True)):
+        if(kwargs.get("use_search", True)):
             self._search = Search(self, *args, **kwargs)
         else:
             self._search = None
@@ -108,10 +125,7 @@ class Browser(Children):
                 dyn_kwargs["proxy"]={"server": "per-context"}
 
             if(self.browser_name == "firefox"):
-                #args.extend(("-start-debugger-server", "12345"))
                 dyn_kwargs["firefox_user_prefs"] = {
-                    'devtools.debugger.remote-enabled': True,
-                    'devtools.debugger.prompt-connection': False,
                 }
             elif(self.browser_name == "chromium"):
                 args.extend((
@@ -137,16 +151,18 @@ class Browser(Children):
                 **dyn_kwargs
             )
 
-            if(self.browser_name == "firefox"):
-                # about:debugging#/runtime/this-firefox
-                page = await self.browser.new_page()
-                await page.goto("about:preferences#search", wait_until="domcontentloaded")
-                await page.keyboard.press("Tab")
-                await page.keyboard.press("Tab")
-                await page.keyboard.press("ArrowDown")
-                await page.keyboard.press("ArrowDown")
-                await page.keyboard.press("ArrowDown")
-                await page.close()
+            if(self.browser_install_addons):
+                context = await self.new_context()
+
+                macro_obj = getattr(Macros, self.browser_name, None)
+                if(type(self.browser_install_addons) == str):
+                    for macro in (fname for fname in dir(macro_obj) if self.browser_install_addons in fname):
+                        await getattr(macro_obj, macro)(context)
+                else:
+                    for macro in (fname for fname in dir(macro_obj) if not fname.startswith('_')):
+                        await getattr(macro_obj, macro)(context)
+
+                await context.close()
 
             print(self.browser)
         else:
@@ -154,8 +170,11 @@ class Browser(Children):
 
         if(self.Rotating_proxies_init):
             await self.get_proxies_online()
+    
+        self.browser.on("disconnected", self.__disconnect)
             
         self._browser_closed = False
+        self._browser_disconected = False
 
         await super().__aenter__(*args, **kwargs)
 
@@ -163,7 +182,9 @@ class Browser(Children):
         if(not self.Browser_init): return
 
         if(self.Pipeline_init):
+            print("Running post pipeline:")
             for post_f in self._post_management:
+                print(f" {post_f.__name__}")
                 await post_f(self)
 
         await super().__aexit__(*args, **kwargs)
@@ -189,7 +210,7 @@ class Browser(Children):
 
         return context
 
-    async def open_websites(self, context:object, websites:set, override:cython.bint=True, load_wait:cython.bint=True, wait_until:str='networkidle') -> object:
+    async def open_websites(self, context:object, websites:set, override:cython.bint=True, load_wait:cython.bint=True) -> object:
         pages:list
         if(not override):
             pages = [(await context.new_page()) for _ in range(len(websites))]
@@ -201,11 +222,14 @@ class Browser(Children):
         page:object
         site:str
         if(load_wait):
-            for page in asyncio.as_completed([page.goto(site, timeout=5000, wait_until=wait_until) for page, site in zip(pages, websites)]):
+            for page in asyncio.as_completed([
+                    page.goto(site, timeout=5000, wait_until=self._browser_open_wait_until) 
+                        for page, site in zip(pages, websites)
+                    ]):
                 yield page
         else:
             for page, site in zip(pages, websites):
-                asyncio.create_task(page.goto(site, timeout=0, wait_until=wait_until))
+                asyncio.create_task(page.goto(site, timeout=0, wait_until=self._browser_open_wait_until))
 
     async def load_session(self, session_name:str, *args, context:object=None, load_wait:bool=False, **kwargs) -> object:
         if(context is None):
@@ -225,6 +249,9 @@ class Browser(Children):
         while(self.closed() != True):
             await asyncio.sleep(3)
 
+    def __disconnect(self) -> None:
+        self._browser_disconected = True
+    
     @property
     def closed(self) -> cython.bint:
-        return self._browser_closed or not len(self.browser.contexts) or not sum(map(lambda x: len(x.pages), self.browser.contexts))
+        return self._browser_disconected and self._browser_closed or not len(self.browser.contexts) or not sum(map(lambda x: len(x.pages), self.browser.contexts))
