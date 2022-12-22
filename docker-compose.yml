@@ -2,13 +2,13 @@ version: "3.9"
 
 services:
   scraper:
+    image: scraper
     container_name: scraper
     build:
       context: ./
-    volumes:
-      - ./scraper_volume:/home/scraper
     env_file: .env
     network_mode: "host"
+    working_dir: /home/scraper/
     environment:
       - DISPLAY=${DISPLAY}
       - QT_X11_NO_MITSHM=1

@@ -52,11 +52,14 @@ async def main():
         br.apply_contexts(manage_contexts, run_mode="async")
         br.url_tracking(manage_page_routed, manage_new_page_routed)
         # br.search("test")
-            
+
         br.print_state()
 
         try:
             while True:
+                await asyncio.sleep(3)
+                continue
+            
                 i = input("> ") 
 
                 if(i == "exit"):
