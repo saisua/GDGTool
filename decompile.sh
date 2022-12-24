@@ -1,6 +1,8 @@
-rm -f ./Core/*.cpp
+rm -f ./Core/*.c*
 rm -f ./Core/*.so
-rm -f ./Extensions/*.cpp
+rm -f ./Core/utils/*.c*
+rm -f ./Core/utils/*.so
+rm -f ./Extensions/*.c*
 rm -f ./Extensions/*.so
-rm -f ./*.cpp
+rm -f ./*.c*
 rm -f ./*.so

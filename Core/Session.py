@@ -13,7 +13,6 @@ class Session:
     Session_init:cython.bint
 
     
-
     def __init__(self, parent, *args, **kwargs):
         print(f"{' '*kwargs.get('verbose_depth', 0)}Initializing Session")
 

@@ -1,9 +1,10 @@
+# distutils: language=c++
+
 cimport cython
 
-from Core.utils cimport children
+from Core.utils.children cimport Children
+
+ctypedef struct PyObject
 
 cdef class Children:
-    cdef tuple children
-
-    cpdef __init__(self, tuple children)
-    cpdef object __getattr__(self, str attr)
+    pass

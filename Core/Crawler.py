@@ -1,13 +1,10 @@
 # distutils: language=c++
 
 import asyncio
-from multiprocessing.connection import wait
 import re
 import cython
-import multiprocessing as mp
 from typing import *
 from itertools import chain
-from xml import dom
 from math import ceil
 import numpy as np
 
@@ -38,8 +35,8 @@ class Crawler(Browser):
 
     # Regex to find the domain of a URL. 
     # per example: https://desktop.github.com/test -> github.com
-    crawler_domain_regex: re.Pattern = re.compile(r"^(https?://)?([^/]+\.)?([^/]+\.[^/]+).*")
-    crawler_robots_regex: re.Pattern = re.compile(r"disallowed(\W|\s)\s*((\w|\/)+)", re.IGNORECASE)
+    crawler_domain_regex: re.Pattern
+    crawler_robots_regex: re.Pattern
 
     Crawler_init: cython.bint
     Crawler_enter: cython.bint
@@ -56,6 +53,9 @@ class Crawler(Browser):
 
             super().__init__(*args, **kwargs)
 
+        self.crawler_domain_regex = re.compile(r"^(https?://)?([^/]+\.)?([^/]+\.[^/]+).*")
+        self.crawler_robots_regex = re.compile(r"disallowed(\W|\s)\s*((\w|\/)+)", re.IGNORECASE)
+
         self.crawler_sites = sites
         self.crawler_visited_urls = kwargs.pop("visited_urls", set())
         self.crawler_blocked_domains = kwargs.pop("blocked_domains", set(['reddit.com']))
@@ -65,8 +65,8 @@ class Crawler(Browser):
         self._crawler_avaliable_tabs = []
         self._crawler_open_tabs = 0
 
-        _crawler_rotate_request = False
-        _crawler_rotate_in_progress = False
+        self._crawler_rotate_request = False
+        self._crawler_rotate_in_progress = False
 
         self.next_level_sites = dict()
         self.Crawler_init = True

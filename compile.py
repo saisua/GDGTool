@@ -12,12 +12,17 @@ print("[+] Done (Cython import)\n")
 print("Compiling the program into Cython...\n\n###")
 setup(
     name='Scraper',
-    ext_modules=cythonize([
-                            "Core/*.py",
-                            "Extensions/*.py",
-                            "cli.py"
-                            ],
-                            language_level=3),
+    ext_modules=cythonize(
+        [
+            "Core/utils/children.py",
+            "Core/*",
+            "Extensions/*.py",
+            "cli.py"
+        ],
+        language_level=3,
+        exclude_failures=True,
+        #show_all_warnings=True,
+    ),
     zip_safe=False,
     extra_compile_args=["-Ofast", 
                         "-march=native",

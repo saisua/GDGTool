@@ -32,7 +32,7 @@ async def manage_new_page_routed(browser, page):
             await _
         await page.bring_to_front()
 
-@cython.cfunc
+
 async def main():
     global block_new_pages
     br: object

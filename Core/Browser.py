@@ -2,7 +2,7 @@
 
 import asyncio
 import cython
-from playwright._impl._browser import Browser
+from playwright._impl._browser import Browser as _Browser
 from playwright.async_api import async_playwright
 from undetected_playwright import stealth_async
 
@@ -29,7 +29,7 @@ class Browser(Children):
     __playwright_instance: object
     _playwright_manager: object
 
-    browser: Browser
+    browser: _Browser
 
     browser_headless: cython.bint
     browser_name: str
@@ -37,7 +37,7 @@ class Browser(Children):
     browser_install_addons: cython.bint
 
     _browser_use_proxies: cython.bint
-    _browser_closed: cython.bint = True
+    _browser_closed: cython.bint
     _browser_disconected: cython.bint
 
     Browser_init: cython.bint
