@@ -4,8 +4,7 @@ from API.utils.url_utils import *
 
 from playwright.async_api._generated import BrowserContext
 
-import asyncio
-import cython
+import traceback
 
 class Browser(Core_Browser):
     _br_inited: bool
@@ -14,18 +13,25 @@ class Browser(Core_Browser):
     def __init__(self, *args, **kwargs) -> None:
         self._br_inited = False
         self._br_verbose = kwargs.get('verbose', False)
-        Core_Browser.__init__(self, *args, **kwargs)
+        super().__init__(*args, **kwargs)
+
+    async def __aenter__(self, *args, **kwargs) -> object:
+        await self.open_browser()
+
+        return self
+
+    async def __aexit__(self, *args, **kwargs) -> None:
+        await self.close_browser()
 
     async def open_browser(self):
         if(self._br_verbose):
             print("Open browser", flush=False)
         
         try:
-            await Core_Browser.__aenter__(self)
-        except Exception as err:
-            print(err)
-            return err
-        
+            await super().__aenter__()
+        except Exception:
+            print(traceback.format_exc())
+
         self._br_inited = True
 
     async def close_browser(self):
@@ -35,10 +41,9 @@ class Browser(Core_Browser):
         try:
             self.check_browser_inited()
 
-            await Core_Browser.__aexit__(self, )
-        except Exception as err:
-            print(err)
-            return err
+            await super().__aexit__()
+        except Exception:
+            print(traceback.format_exc())
 
         self._br_inited = False
 
@@ -48,16 +53,16 @@ class Browser(Core_Browser):
         
         try:
             self.check_browser_inited()
+            assert self.browser is not None, "[-] Browser has not been created"
 
             if(len(self.browser.contexts)):
                 return self.browser.contexts[-1]
             else:
                 if(self._br_verbose):
                     print(" Creating new context", flush=False)
-                return await self.new_context(*args, **kwargs)
-        except Exception as err:
-            print(err)
-            return err
+                return await self._new_context(*args, **kwargs)
+        except Exception:
+            print(traceback.format_exc())
 
     async def open_websites(self, *args, **kwargs) -> object:
         if(self._br_verbose):
@@ -67,22 +72,25 @@ class Browser(Core_Browser):
             self.check_browser_inited()
             args = list(args)
 
-            await argkwarg(0, "context", BrowserContext, self.get_context, args, kwargs, force_async=True)
+            context = await argkwarg(0, "context", BrowserContext, self.get_context, args, kwargs, force_async=True)
             websites = await argkwarg(1, "websites", set, set, args, kwargs, force_type=True)
+            
+            assert context is not None, "[-] Context has not been created"
             for website in websites:
-                Browser.check_valid_url(website)
+                check_valid_url(website)
+
             if(self._br_verbose):
                 wstr = '\n '.join(websites)
                 print("Open websites:", flush=False)
                 print(f" {wstr}", flush=False)
 
             if(kwargs.get("load_wait", True)):
-                async for website in Core_Browser.open_websites(self, *args, **kwargs):
+                async for website in super()._open_websites(*args, **kwargs):
                     yield website
             else:
-                yield Core_Browser.open_websites(self, *args, **kwargs)
-        except Exception as err:
-            print(err)
+                yield super()._open_websites(*args, **kwargs)
+        except Exception:
+            print(traceback.format_exc())
 
     async def load_session(self, *args, context: object = None, load_wait: bool = False, **kwargs) -> object:
         if(self._br_verbose):
@@ -95,10 +103,9 @@ class Browser(Core_Browser):
             await argkwarg(0, "session_name", str, None, args, kwargs)
             await argkwarg(None, "context", BrowserContext, None, args, kwargs, can_be_none=True)
 
-            return await Core_Browser.load_session(self, *args, **kwargs) 
-        except Exception as err:
-            print(err)
-            return err   
+            return await super().load_session(*args, **kwargs) 
+        except Exception:
+            print(traceback.format_exc())
         
     async def search(self, *args, **kwargs):
         if(self._br_verbose):
@@ -122,19 +129,13 @@ class Browser(Core_Browser):
             links = await self._search.search(*args, **kwargs)
             if(kwargs.get("open_links", True)):
                 context = await self.get_context()
-                async for agen in self.open_websites(context, websites=set(links), load_wait=False):
+                async for agen in self._open_websites(context, websites=set(links), load_wait=False):
                     async for _ in agen:
                         await _
-        except Exception as err:
-            print(err)
-            return err
+        except Exception:
+            print(traceback.format_exc())
     
     # Checks 
-
-    @staticmethod
-    def check_valid_url(url):
-        assert isinstance(url, str), f"URL \"{url}\" must be a string"
-        assert url_re.match(url), f"URL \"{url}\" is not valid"
 
     def check_browser_inited(self):
         assert self._br_inited, "The browser is not open yet"

@@ -5,10 +5,10 @@ import os, sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from Core.Crawler import Crawler
-from Plugins.Summary import setup
+from EndScripts.Summary import setup
 
 async def basic_summarization():
-    search = "Southbridge chipset"
+    search = "Cork material"
     # Resources must be True
     crawler = Crawler(storage_name=f"{search} summarization", remove_old_data=True, headless=False)
     setup(crawler)

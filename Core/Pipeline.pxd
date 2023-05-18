@@ -7,7 +7,7 @@ from Core.Pipeline cimport Pipeline
 ctypedef struct PyObject
 
 cdef class Pipeline:
-    cdef list pipe_names
+    cdef tuple pipe_names
     cdef list _start_management
     cdef list _url_management
     cdef list _page_management

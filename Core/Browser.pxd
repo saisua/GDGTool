@@ -1,13 +1,13 @@
 # distutils: language=c++
 
 cimport cython
-import re
 
 from Core.Browser cimport Browser
+from Core.utils.children cimport Children
 
 ctypedef struct PyObject
 
-cdef class Browser:
+cdef class Browser(Children):
     cdef object _storage
     cdef object _pipeline
     cdef object _session
@@ -18,18 +18,18 @@ cdef class Browser:
     cdef object __playwright_instance
     cdef object _playwright_manager
 
-    cdef object browser
+    cdef readonly object browser
 
     cdef cython.bint browser_headless
     cdef str browser_name
     cdef cython.bint browser_persistent
-    browser_install_addons: cython.bint
+    cdef cython.bint browser_install_addons
 
-    _browser_use_proxies: cython.bint
-    _browser_closed: cython.bint = True
-    _browser_disconected: cython.bint
+    cdef cython.bint _browser_use_proxies
+    cdef cython.bint _browser_closed
+    cdef cython.bint _browser_disconected
 
-    Browser_init: cython.bint
-    Browser_enter: cython.bint
+    cdef cython.bint Browser_init
+    cdef cython.bint Browser_enter
 
-    _browser_open_wait_until: str
+    cdef str _browser_open_wait_until

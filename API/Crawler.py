@@ -1,17 +1,17 @@
-
-from API.Browser import Browser as API_Browser
 from Core.Crawler import Crawler as Core_Crawler
+
+from API.Browser import Browser
 
 from API.utils.function import *
 from API.utils.url_utils import *
 
 from playwright.async_api._generated import BrowserContext
 
-
 import asyncio
 import cython
+import traceback
 
-class Crawler(API_Browser, Core_Crawler):
+class Crawler(Core_Crawler):
     _cr_inited: bool
     _cr_verbose: bool
 
@@ -24,22 +24,26 @@ class Crawler(API_Browser, Core_Crawler):
         for site_list in sites:
             assert isinstance(site_list, list), "All domains must contain a list"
 
-            for site in site_list:
-                assert isinstance(site, str), "All urls must be strings"
-                assert url_re.match(site), f"URL {site} is invalid" 
+            for site_url in site_list:
+                check_valid_url(site_url)
 
-        API_Browser.__init__(self, *args, **kwargs)
-        Core_Crawler.__init__(self, *args, **kwargs)
+        super().__init__(*args, **kwargs)
+
+    async def __aenter__(self, *args, **kwargs) -> object:
+        await self.open_crawler()
+
+        return self
+
+    async def __aexit__(self, *args, **kwargs) -> None:
+        await self.close_crawler()
 
     async def open_crawler(self):
         if(self._cr_verbose):
             print("Open crawler", flush=False)
         try:
-            await API_Browser.open_browser(self)
-            await Core_Crawler.__aenter__(self)
-        except Exception as err:
-            print(err)
-            return err
+            await super().__aenter__()
+        except Exception:
+            print(traceback.format_exc())
 
         self._cr_inited = True
 
@@ -49,41 +53,83 @@ class Crawler(API_Browser, Core_Crawler):
         try:
             self.check_crawler_inited()
 
-            await API_Browser.close_browser(self)
-            await Core_Crawler.__aexit__(self, )
-        except Exception as err:
-            print(err)
-            return err
+            await super().__aexit__()
+        except Exception:
+            print(traceback.format_exc())
 
         self._cr_inited = False
-    
+
+    async def get_context(self, *args, **kwargs):
+        if(self._cr_verbose):
+            print("Get context", flush=False)
+        
+        try:
+            self.check_crawler_inited()
+            assert self.browser is not None, "[-] Browser has not been created"
+
+            if(len(self.browser.contexts)):
+                return self.browser.contexts[-1]
+            else:
+                if(self._cr_verbose):
+                    print(" Creating new context", flush=False)
+                return await self._new_context(*args, **kwargs)
+        except Exception:
+            print(traceback.format_exc())
+
+    async def open_websites(self, *args, **kwargs) -> object:
+        if(self._cr_verbose):
+            print("Open websites", flush=False)
+
+        try:
+            self.check_crawler_inited()
+            args = list(args)
+
+            context = await argkwarg(0, "context", BrowserContext, self.get_context, args, kwargs, force_async=True)
+            websites = await argkwarg(1, "websites", set, set, args, kwargs, force_type=True)
+            
+            assert context is not None, "[-] Context has not been created"
+            for website in websites:
+                check_valid_url(website)
+
+            if(self._cr_verbose):
+                wstr = '\n '.join(websites)
+                print("Open websites:", flush=False)
+                print(f" {wstr}", flush=False)
+
+            if(kwargs.get("load_wait", True)):
+                async for website in super()._open_websites(*args, **kwargs):
+                    yield website
+            else:
+                yield super()._open_websites(*args, **kwargs)
+        except Exception:
+            print(traceback.format_exc())
+
+
     async def start_open_tabs(self, *args, **kwargs) -> cython.void:
         try:
             self.check_crawler_inited()
 
             args = list(args)
             await argkwarg(0, "num_tabs", int, lambda : 25, args, kwargs)
-            await argkwarg(1, "context", BrowserContext, self.new_context, args, kwargs)
+            await argkwarg(1, "context", BrowserContext, self._new_context, args, kwargs)
 
-            return await Core_Crawler.start_open_tabs(self, *args, **kwargs)
-        except Exception as err:
-            print(err)
-            return err
+            return await super().start_open_tabs(*args, **kwargs)
+        except Exception:
+            print(traceback.format_exc())
 
     async def get_websites(self, *args, **kwargs) -> list:
         if(self._cr_verbose):
             print("Get websites", flush=False)
-        
+            
         try:
             self.check_crawler_inited()
 
             args = list(args)
             await argkwarg(0, "max_tabs", int, lambda : 25, args, kwargs)
 
-            return await Core_Crawler.get_websites(self, *args, **kwargs)
-        except Exception as err:
-            print(err)
-            return err
+            return await super().get_websites(*args, **kwargs)
+        except Exception:
+            print(traceback.format_exc())
 
     async def add_sites(self, *args, **kwargs):
         if(self._cr_verbose):
@@ -97,17 +143,16 @@ class Crawler(API_Browser, Core_Crawler):
 
             for site in sites:
                 assert isinstance(site, str), "All added sites must be strings"
-                API_Browser.check_valid_url(site)
+                check_valid_url(site)
 
             if(self._cr_verbose):
                 print(f"Add sites:", flush=False)
                 sstr = '\n '.join(sites)
                 print(f" {sstr}", flush=False)
 
-            return await Core_Crawler.add_sites(self, *args, **kwargs)
-        except Exception as err:
-            print(err)
-            return err
+            return await super().add_sites(*args, **kwargs)
+        except Exception:
+            print(traceback.format_exc())
 
     async def crawl(self, *args, **kwargs) -> object:
         try:
@@ -127,10 +172,9 @@ class Crawler(API_Browser, Core_Crawler):
             assert num_contexts > 0
             assert max_tabs > 0
 
-            return await Core_Crawler.crawl(self, *args, **kwargs)
-        except Exception as err:
-            print(err)
-            return err
+            return await super().crawl(*args, **kwargs)
+        except Exception:
+            print(traceback.format_exc())
 
     def check_crawler_inited(self):
         assert self._cr_inited, "The crawler is not open yet"

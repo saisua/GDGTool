@@ -118,7 +118,7 @@ class Search:
         links = self.__add_links(new_links, keywords, block_start_domains)
 
         if(self.search_child.Storage_init):
-            await self.search_child.add_data("Search", ('query', {"keywords":keywords}))
+            self.search_child._storage.add_data("Search", ('query', {"keywords":keywords}))
 
         return links
 
@@ -130,7 +130,7 @@ class Search:
             links = self.__add_links(SEARCH_GENERAL, keywords, block_start_domains)
 
         if(self.search_child.Storage_init):
-            await self.search_child.add_data("Search", ('query', {"keywords":keywords}))
+            self.search_child.add_data("Search", ('query', {"keywords":keywords}))
 
         return links
         
@@ -138,7 +138,7 @@ class Search:
         links = self.__add_links(SEARCH_IMAGES, keywords, block_start_domains)
 
         if(self.search_child.Storage_init):
-            await self.search_child.add_data("Search", ('query', {"keywords":keywords}))
+            self.search_child.add_data("Search", ('query', {"keywords":keywords}))
 
         return links
 
@@ -146,7 +146,7 @@ class Search:
         links = self.__add_links(SEARCH_VIDEOS, keywords, block_start_domains)
 
         if(self.search_child.Storage_init):
-            await self.search_child.add_data("Search", ('query', {"keywords":keywords}))
+            self.search_child.add_data("Search", ('query', {"keywords":keywords}))
 
         return links
         
@@ -154,7 +154,7 @@ class Search:
         links = self.__add_links(SEARCH_NEWS, keywords, block_start_domains)
 
         if(self.search_child.Storage_init):
-            await self.search_child.add_data("Search", ('query', {"keywords":keywords}))
+            self.search_child.add_data("Search", ('query', {"keywords":keywords}))
 
         return links
 
@@ -162,7 +162,7 @@ class Search:
         links = self.__add_links(SEARCH_SHOPPING, keywords, block_start_domains)
 
         if(self.search_child.Storage_init):
-            await self.search_child.add_data("Search", ('query', {"keywords":keywords}))
+            self.search_child.add_data("Search", ('query', {"keywords":keywords}))
         
         return links
 
@@ -170,7 +170,7 @@ class Search:
         links = self.__add_links(SEARCH_MAPS, keywords, block_start_domains)
 
         if(self.search_child.Storage_init):
-            await self.search_child.add_data("Search", ('query', {"keywords":keywords}))
+            self.search_child.add_data("Search", ('query', {"keywords":keywords}))
 
         return links
         
@@ -178,7 +178,7 @@ class Search:
         links = self.__add_links(SEARCH_SOCIAL, keywords, block_start_domains)
 
         if(self.search_child.Storage_init):
-            await self.search_child.add_data("Search", ('query', {"keywords":keywords}))
+            self.search_child.add_data("Search", ('query', {"keywords":keywords}))
 
         return links
 

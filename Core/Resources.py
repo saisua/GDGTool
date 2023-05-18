@@ -22,9 +22,10 @@ class Resources:
         self.resources_pool = self._manager.Pool(**{kw:v for kw, v in kwargs.items() if kw in {'processes'}})
         self.Resources_init = True
 
-    async def __aenter__(self, *args, **kwargs):
+    async def __aenter__(self, *args, step:cython.bint=1, **kwargs):
         if(not self.Resources_init): return
-
+        if(step != 1): return
+        
         f_name:str
         for overwrite_f in dir(Resources)[::-1]:
             if(overwrite_f.startswith("override_")):
@@ -39,8 +40,9 @@ class Resources:
                     continue
             elif(overwrite_f.startswith("__")): break
 
-    async def __aexit__(self, *args, **kwargs):
+    async def __aexit__(self, *args, step:cython.bint=0, **kwargs):
         if(not self.Resources_init): return
+        if(step != 0): return
 
         self.resources_pool.close()
         self.resources_pool.join()

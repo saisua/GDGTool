@@ -9,6 +9,11 @@ services:
     env_file: .env
     network_mode: "host"
     working_dir: /home/scraper/
+    devices:
+      - "/dev/snd:/dev/snd"
     environment:
       - DISPLAY=${DISPLAY}
       - QT_X11_NO_MITSHM=1
+      - PULSE_SERVER=unix:${XDG_RUNTIME_DIR}/pulse/native
+    group_add:
+      - audio

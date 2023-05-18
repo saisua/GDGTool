@@ -60,7 +60,6 @@ class Crawler(Browser):
         self.crawler_visited_urls = kwargs.pop("visited_urls", set())
         self.crawler_blocked_domains = kwargs.pop("blocked_domains", set(['reddit.com']))
         self.crawler_valid_robots_domains = dict()
-        self.add_pipe("page", Crawler.get_urls, "Get all URLs (necessary for crawling)")
 
         self._crawler_avaliable_tabs = []
         self._crawler_open_tabs = 0
@@ -72,15 +71,19 @@ class Crawler(Browser):
         self.Crawler_init = True
         self.Crawler_enter = False
 
-    async def __aenter__(self, *args, **kwargs):
-        if(self.Crawler_enter):
-            return
+    async def __aenter__(self, *args, step:cython.bint=0, **kwargs):
+        if(self.Crawler_enter): return
+        if(step != 0): return
+
         self.Crawler_enter = True
-        await super().__aenter__(self, *args, **kwargs)
+        await super().__aenter__(*args, **kwargs)
 
         return self
 
-    async def __aexit__(self, *args, **kwargs) -> None:
+    async def __aexit__(self, *args, step:cython.bint=1, **kwargs) -> None:
+        if(not self.Crawler_enter): return
+        if(step != 1): return
+
         await super().__aexit__(*args, **kwargs)
         self.Crawler_enter = False
 
@@ -120,11 +123,18 @@ class Crawler(Browser):
         try:
             loaded_site:object = await tab.goto(url, wait_until="networkidle")
                 
-            while(loaded_site is None):
-                loaded_site = await tab.goto(url, wait_until="networkidle")
+            if(not loaded_site):
+                for _ in range(5):
+                    loaded_site = await tab.goto(url, wait_until="networkidle")
+                    if(loaded_site):
+                        break
+                else:
+                    return
         except TimeoutError:
             print(f"[-] URL \"{url}\" Failed loading by timeout")
             self._crawler_avaliable_tabs.append(tab)
+            return
+        except Exception:
             return
 
         self._crawler_rotate_request = True
@@ -138,46 +148,49 @@ class Crawler(Browser):
 
         try:
             # In case of dynamically loaded websites
-            for _ in asyncio.as_completed([page_alter(self, website_data, loaded_site) for page_alter in self._page_management]):
+            for _ in asyncio.as_completed([page_alter(self, website_data, tab) for page_alter in self._page_management]):
                 await _
-            for _ in asyncio.as_completed([data_alter(self, website_data, loaded_site) for data_alter in self._data_management]):
+            for _ in asyncio.as_completed([data_alter(self, website_data, tab) for data_alter in self._data_management]):
                 await _
-
-            if("urls" in website_data):
-                site:str
-                for site in website_data["urls"]:
-                    if(site not in self.crawler_visited_urls):
-                        self.crawler_visited_urls.add(site)
-
-                        if(enforce_robots):
-                            robots_rules: set = self.crawler_valid_robots_domains.get(domain)
-                            if(robots_rules is None):
-                                # Register robots.txt rules
-                                robots_rules = self.check_robots(domain)
-
-                            # https:// = 8 characters
-                            site_path = site[site.find('/', 8):]
-                            for rule in robots_rules:
-                                if(site_path.startswith(rule)):
-                                    # Blocked path
-                                    continue
-
-                        match:object = self.crawler_domain_regex.search(site)
-                        if(match):
-                            domain:str = match.group(3)
-                            if(domain not in self.crawler_blocked_domains):
-                                if(domain not in self.crawler_sites):
-                                    self.next_level_sites[domain] = {site}
-                                else:
-                                    self.next_level_sites[domain].add(site)
-            
-            asyncio.create_task(self.add_data(loaded_site.domain, (loaded_site.url, website_data)))
         except Exception as e:
             print(f"Error on page {tab}: {e}")
         finally:
             self._crawler_avaliable_tabs.append(tab)
+        
+            if("urls" in website_data):
+                self._analize_new_urls(website_data, enforce_robots)
+        
+        self._storage.add_data(loaded_site.domain, (loaded_site.url, website_data))
 
-    async def get_crawling_urls(self, num_tabs:cython.uint) -> list:
+    def _analize_new_urls(self, website_data: dict, enforce_robots: cython.bint):
+        site: str
+        for site in website_data["urls"]:
+            if(site not in self.crawler_visited_urls):
+                self.crawler_visited_urls.add(site)
+
+                if(enforce_robots):
+                    robots_rules: set = self.crawler_valid_robots_domains.get(domain)
+                    if(robots_rules is None):
+                        # Register robots.txt rules
+                        robots_rules = self.check_robots(domain)
+
+                    # https:// = 8 characters
+                    site_path = site[site.find('/', 8):]
+                    for rule in robots_rules:
+                        if(site_path.startswith(rule)):
+                            # Blocked path
+                            continue
+
+                match: object = self.crawler_domain_regex.search(site)
+                if(match):
+                    domain: str = match.group(3)
+                    if(domain not in self.crawler_blocked_domains):
+                        if(domain not in self.crawler_sites):
+                            self.next_level_sites[domain] = {site}
+                        else:
+                            self.next_level_sites[domain].add(site)
+
+    def get_crawling_urls(self, num_tabs:cython.uint) -> list:
         result:list = []
         end_domains:list = []
         n_domains:cython.uint = len(self.crawler_sites)
@@ -228,6 +241,9 @@ class Crawler(Browser):
                         max_websites:cython.uint=-1,
                         enforce_robots:cython.bint=False
                         ) -> object:
+        if(Crawler.url_extraction not in self._page_management):
+            self.add_pipe("page", Crawler.url_extraction, "Get all URLs (necessary for crawling)")
+
         if(not contexts):
             _:cython.uint
             dyn_attr:dict = {}
@@ -235,7 +251,7 @@ class Crawler(Browser):
                 if(self.Rotating_proxies_init):
                     dyn_attr["proxy"] = {"server":self.new_proxy()}
 
-                nc = await self.new_context(
+                nc = await self._new_context(
                                             accept_downloads=False,
                                             **dyn_attr
                                         )
@@ -276,7 +292,7 @@ class Crawler(Browser):
                 print(f"  Found {len(self.crawler_visited_urls)} websites", end='\r')
 
                 tabs = await self.get_websites(max_tabs)
-                urls = await self.get_crawling_urls(len(tabs))
+                urls = self.get_crawling_urls(len(tabs))
                 searched_websites += len(urls)
                 
                 if(len(urls) != len(tabs)):
@@ -337,18 +353,33 @@ class Crawler(Browser):
         self.crawler_valid_robots_domains[domain] = rules_set
         return rules_set
 
+
+    async def get_urls(self, page:object) -> list:
+        return await page.frames[0].locator(":link:not(:visited)").evaluate_all("nodes => nodes.map(node => node.href)")
+
     @staticmethod
-    async def get_urls(self, data:dict, page:object):
-        links:list = await page.frame.locator(":link:not(:visited)").evaluate_all("nodes => nodes.map(node => node.href)")
+    async def url_extraction(self, data:dict, page:object):
+        links:list = await page.frames[0].locator(":link:not(:visited)").evaluate_all("nodes => nodes.map(node => node.href)")
         if(links is not None):
             data["urls"] = set(links)
 
-    @staticmethod
-    async def get_images(self, data:dict, page:object):
-        images:list = await page.frame.locator("img[src]").evaluate_all("nodes => nodes.map(node => node.src)")
+    async def get_images(self, page:object) -> set:
+        images:list = await page.frames[0].locator("img[src]").evaluate_all("nodes => nodes.map(node => node.src)")
         while(not images):
             await asyncio.sleep(0.5)
-            images = await page.frame.locator("img[src]").evaluate_all("nodes => nodes.map(node => node.src)")
+            images = await page.frames[0].locator("img[src]").evaluate_all("nodes => nodes.map(node => node.src)")
+
+            if(images is None):
+                return 
+
+        if(images is not None):
+            return set(images)
+
+    async def image_extraction(self, data:dict, page:object):
+        images:list = await page.frames[0].locator("img[src]").evaluate_all("nodes => nodes.map(node => node.src)")
+        while(not images):
+            await asyncio.sleep(0.5)
+            images = await page.frames[0].locator("img[src]").evaluate_all("nodes => nodes.map(node => node.src)")
 
             if(images is None):
                 return 
@@ -356,21 +387,22 @@ class Crawler(Browser):
         if(images is not None):
             data["images"] = set(images)
 
-    @staticmethod
-    async def get_videos(self, data:dict, page:object):
-        videos:list = await page.frame.locator("video[src]").evaluate_all("nodes => nodes.map(node => node.src)")
+    async def video_extraction(self, data:dict, page:object):
+        videos:list = await page.frames[0].locator("video[src]").evaluate_all("nodes => nodes.map(node => node.src)")
 
         if(videos is not None):
             data["videos"] = set(videos)
 
+    async def get_text(self, page:object) -> str:
+        return await page.frames[0].inner_text('body')
+
     @staticmethod
-    async def get_text(self, data:dict, page:object):
-        text:str = await page.frame.inner_text('body')
+    async def text_extraction(self, data:dict, page:object):
+        text:str = await page.frames[0].inner_text('body')
         
         if(text is not None):
             data["text"] = text
 
-    @staticmethod
     async def load_session(self, session_name:str, *args, **kwargs) -> None:
         await self.add_sites((site for session in (await super()._load_session(session_name)) for site in session))
 

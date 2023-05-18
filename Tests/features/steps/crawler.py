@@ -16,6 +16,10 @@ def given_search(context, search_str, domain):
 @behave.then("A new crawler will be created")
 def then_open_browser(context):
     context.loop.run_until_complete(open_crawler(context))
+    
+    assert hasattr(context, 'crawler')
+    assert context.crawler is not None
+    assert context.crawler.browser is not None
 
 @behave.then("The {crawler} will add the urls")
 def then_add_urls(context, crawler):

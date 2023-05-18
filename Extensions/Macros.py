@@ -14,6 +14,7 @@ class Firefox:
 
     @staticmethod
     async def set_ddg_extension(context):
+        return 
         if(not os.path.isdir("Settings")):
             return
         if(not os.path.isdir("Settings/Addons")):

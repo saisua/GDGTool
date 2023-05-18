@@ -97,21 +97,24 @@ class Browser(Children):
 
         super().__init__((self._storage, self._pipeline, self._session, self._resources, self._rotating_proxies, self._search))
 
-    async def __aenter__(self, *args, **kwargs) -> object:
+    async def __aenter__(self, *args, step:cython.bint=0, **kwargs) -> object:
         if(self.Browser_enter):
             return
-        await Browser.open(self, *args, **kwargs)
+        await self.open(*args, step=step, **kwargs)
 
         print("[+] Browser set up")
         return self
 
-    async def __aexit__(self, *args, **kwargs) -> None:
-        await self.close(*args, **kwargs)
+    async def __aexit__(self, *args, step:cython.bint=1, **kwargs) -> None:
+        await self.close(*args, step=step, **kwargs)
 
-    async def open(self, *args, **kwargs) -> None:
+    async def open(self, *args, step:cython.bint=0, **kwargs) -> None:
         if(not self.Browser_init): return
+        if(step != 0): return
 
         self.Browser_enter = True
+
+        await asyncio.create_task(super().__aenter__(self, *args, step=0, **kwargs))
 
         if(self.__playwright_instance is None):
             self.__playwright_instance = async_playwright()
@@ -152,7 +155,7 @@ class Browser(Children):
             )
 
             if(self.browser_install_addons):
-                context = await self.new_context()
+                context = await self._new_context()
 
                 macro_obj = getattr(Macros, self.browser_name, None)
                 if(type(self.browser_install_addons) == str):
@@ -171,23 +174,19 @@ class Browser(Children):
         if(self.Rotating_proxies_init):
             await self.get_proxies_online()
     
-        self.browser.on("disconnected", self.__disconnect)
+        #self.browser.on("disconnected", self.__disconnect)
             
         self._browser_closed = False
         self._browser_disconected = False
 
-        await super().__aenter__(*args, **kwargs)
+        await asyncio.create_task(super().__aenter__(self, *args, step=1, **kwargs))
 
-    async def close(self, *args, **kwargs) -> None:
+    async def close(self, *args, step:cython.bint=1, **kwargs) -> None:
         if(not self.Browser_init): return
+        if(step != 1): return
 
-        if(self.Pipeline_init):
-            print("Running post pipeline:")
-            for post_f in self._post_management:
-                print(f" {post_f.__name__}")
-                await post_f(self)
-
-        await super().__aexit__(*args, **kwargs)
+        await asyncio.create_task(super().__aexit__(*args, step=0, **kwargs))
+        await asyncio.sleep(0.01)
 
         await self.browser.close()
         await self.__playwright_instance.__aexit__()
@@ -195,7 +194,15 @@ class Browser(Children):
         self._browser_closed = True
         self.Browser_enter = False
 
-    async def new_context(self, *args:tuple, **kwargs:dict) -> object:
+        if(self.Pipeline_init):
+            print("Running post pipeline:")
+            for post_f in self._post_management:
+                print(f" {post_f.__name__}")
+                await post_f(self)
+
+        await asyncio.create_task(super().__aexit__(*args, step=1, **kwargs))
+
+    async def _new_context(self, *args:tuple, **kwargs:dict) -> object:
         context:object = await self.browser.new_context(*args, **kwargs)
         await stealth_async(context)
 
@@ -210,8 +217,8 @@ class Browser(Children):
 
         return context
 
-    async def open_websites(self, context:object, websites:set, override:cython.bint=True, load_wait:cython.bint=True) -> object:
-        pages:list
+    async def _open_websites(self, context:object, websites:set, override:cython.bint=True, load_wait:cython.bint=True) -> object:
+        pages: list
         if(not override):
             pages = [(await context.new_page()) for _ in range(len(websites))]
         else:
@@ -219,11 +226,12 @@ class Browser(Children):
                 await context.new_page()
             pages = context.pages
 
+
         page:object
         site:str
         if(load_wait):
             for page in asyncio.as_completed([
-                    page.goto(site, timeout=5000, wait_until=self._browser_open_wait_until) 
+                    page.goto(site, wait_until=self._browser_open_wait_until) 
                         for page, site in zip(pages, websites)
                     ]):
                 yield page
@@ -233,15 +241,15 @@ class Browser(Children):
 
     async def load_session(self, session_name:str, *args, context:object=None, load_wait:bool=False, **kwargs) -> object:
         if(context is None):
-            context = await self.new_context()
+            context = await self._new_context()
 
         session:set
         site:str
         if(load_wait):
-            async for _ in self.open_websites(context, [site for session in (await super()._load_session(session_name)) for site in session], *args, load_wait=load_wait, **kwargs):
+            async for _ in self._open_websites(context, [site for session in (await super()._load_session(session_name)) for site in session], *args, load_wait=load_wait, **kwargs):
                 await _
         else:
-            await self.open_websites(context, [site for session in (await super()._load_session(session_name)) for site in session], *args, load_wait=load_wait, **kwargs)
+            await self._open_websites(context, [site for session in (await super()._load_session(session_name)) for site in session], *args, load_wait=load_wait, **kwargs)
 
         return context
     
@@ -254,4 +262,4 @@ class Browser(Children):
     
     @property
     def closed(self) -> cython.bint:
-        return self._browser_disconected and self._browser_closed or not len(self.browser.contexts) or not sum(map(lambda x: len(x.pages), self.browser.contexts))
+        return (self._browser_disconected and self._browser_closed) or not len(self.browser.contexts) or not sum(map(lambda x: len(x.pages), self.browser.contexts))

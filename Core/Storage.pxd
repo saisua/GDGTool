@@ -13,6 +13,8 @@ cdef class Storage:
 
     cdef object storage_library
     cdef cython.uint max_memory_domains
+    cdef cython.uint max_operations
+    cdef cython.uint _operations
 
     cdef dict storage_data_repr
     cdef dict file_cache

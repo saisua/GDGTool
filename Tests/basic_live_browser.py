@@ -3,7 +3,7 @@
 import os, sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from API.Live import Live_browser
+from API.Browser import Live_browser
 
 def open_live_browser_test():
     with Live_browser(remove_old_data=True, headless=False, browser_name="firefox") as br:

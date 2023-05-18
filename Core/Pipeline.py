@@ -2,7 +2,7 @@
 import cython
 
 class Pipeline:
-    pipe_names:list
+    pipe_names:tuple
     _start_management:list
     _url_management:list
     _page_management:list
@@ -14,12 +14,10 @@ class Pipeline:
 
     Pipeline_init:cython.bint
 
-    
-
     def __init__(self, *args, **kwargs):
         print(f"{' '*kwargs.get('verbose_depth', 0)}Initializing Pipeline")
 
-        self.pipe_names = [[], [], [], [], [], []]
+        self.pipe_names = ([], [], [], [], [], [])
         self._start_management = []
         self._url_management = []
         self._page_management = []

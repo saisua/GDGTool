@@ -25,10 +25,7 @@ import re
 s_re = re.compile("\s+")
 w_re = re.compile("[ \w]+")
 
-try:
-    from Plugins.utils.coref_resolution import solve_coref
-except ModuleNotFoundError:
-    from utils.coref_resolution import solve_coref
+from Plugins.utils.coref_resolution import solve_coref
 
 stopw = spacy.lang.en.stop_words.STOP_WORDS
 fpos = {
@@ -36,6 +33,9 @@ fpos = {
   "INTJ",
   "X"
 }
+
+from EndScripts.utils.load_data import load_data
+from EndScripts.utils.store_data import store_data
 
 def get1(c:tuple)->int: return c[1]
 
@@ -383,7 +383,11 @@ def special_is(subj_str, subj_list, root_str, root_list, obj):
 
 
 def compute_graph(text):
-    solved_doc = nlp(s_re.sub(' ', solve_coref(nlp(text))))
+    coref_text = solve_coref(nlp(text))
+    if(len(coref_text) < 100_000):
+        solved_doc = nlp(coref_text)
+    else:
+        solved_doc = nlp(text)
 
     ## Compute the subject for each sentence
     subjects = dict()
@@ -489,10 +493,8 @@ def compute_graph(text):
 
     return relationship_network
 
-def mp_graph(data, all_networks,  *, mp: bool=True):
+def mp_graph(text, all_networks):
     try:
-        text = data.get('text', '')
-
         if(type(text) != str):
             text = '\n'.join(text)
 
@@ -500,16 +502,20 @@ def mp_graph(data, all_networks,  *, mp: bool=True):
             return ''
 
         network = compute_graph(text)
-        data['graph_pickle'] = pickle.dumps(network)
         all_networks.append(network)
-    
     except Exception as err:
         print(err)
-    finally:
-        if(mp):
-            data["locks"] -= 1 
 
-async def generate_graph(crawler:Crawler):
+def generate_one_graph(text: str):
+    network = []
+    mp_graph(text, network)
+
+    if(len(network)):
+        return network[0]
+    else:
+        return None
+
+def generate_graph(crawler:Crawler):
     all_files = []
 
     path:str
@@ -564,11 +570,11 @@ async def generate_graph(crawler:Crawler):
         fig.add_scatter(**graph)
     fig.show()
 
-    await crawler.add_data("Information_graph", ("from_websites", {'urls': all_files}))
-    await crawler.add_data("Information_graph", ("full_graph", {'full_graph':full_network}))
+    #await crawler.add_data("Information_graph", ("from_websites", {'urls': all_files}))
+    #await crawler.add_data("Information_graph", ("full_graph", {'full_graph':full_network}))
 
 def setup(crawler:Crawler):
-    if(crawler.get_text not in crawler._page_management):
-        crawler.add_pipe("page", crawler.get_text, "Text extractor")
+    if(crawler.text_extraction not in crawler._page_management):
+        crawler.add_pipe("page", crawler.text_extraction, "Text extractor")
     if(generate_graph not in crawler._post_management):
         crawler.add_pipe("post", generate_graph, "Full search information graph")

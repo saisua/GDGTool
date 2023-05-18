@@ -1,4 +1,5 @@
 import asyncio
+import cython
 
 children = []
 class Children:
@@ -14,9 +15,11 @@ class Children:
                 #print(f" {child.__class__.__name__} has no \"{attr}\"", flush=False)
 
     async def __aenter__(self, *args, **kwargs):
-        for _ in asyncio.as_completed([ch.__aenter__(self) for ch in children if ch is not None and hasattr(ch, "__aenter__")]):
+        print(f"Children aenter (step={kwargs.get('step')})")
+        for _ in asyncio.as_completed([ch.__aenter__(self, *args, **kwargs) for ch in children if ch is not None and hasattr(ch, "__aenter__")]):
             await _
 
     async def __aexit__(self, *args, **kwargs):
-        for _ in asyncio.as_completed([ch.__aexit__(self) for ch in children if ch is not None and hasattr(ch, "__aexit__")]):
+        print(f"Children aexit (step={kwargs.get('step')})")
+        for _ in asyncio.as_completed([ch.__aexit__(self, *args, **kwargs) for ch in children if ch is not None and hasattr(ch, "__aexit__")]):
             await _

@@ -5,7 +5,7 @@ async def argkwarg(num:int, name:str, cls, default_call, args, kwargs, can_be_no
     print(f"Check var {name}")
     in_kwargs = name in kwargs
 
-    if(num is not None or (num < len(args) or not in_kwargs)):
+    if(not in_kwargs or (num is not None and num < len(args))):
         if(len(args) <= num):
             args.extend([None] * (num - len(args) + 1))
         
@@ -39,7 +39,11 @@ async def argkwarg(num:int, name:str, cls, default_call, args, kwargs, can_be_no
                     print(f" None -> args[{num}]")
 
             elif(cls is not None):
-                assert isinstance(arg, cls), f"arg {name} must be a {[c.__name__ for c in cls] if type(cls) == tuple else cls.__name__} instance, but is {arg.__class__.__name__}\nValue: {arg}"
+                if(not isinstance(arg, cls)):
+                    if(force_type):
+                        arg = cls(arg)  
+                    else:
+                        assert False, f"arg {name} must be a {[c.__name__ for c in cls] if type(cls) == tuple else cls.__name__} instance, but is {arg.__class__.__name__}\nValue: {arg}"
                 print(f" Verified args[{num}]")
 
         return arg
@@ -64,7 +68,11 @@ async def argkwarg(num:int, name:str, cls, default_call, args, kwargs, can_be_no
             else:
                 print(f" None -> args[{num}]")
         elif(cls is not None):
-            assert isinstance(kwarg, cls), f"kwarg {name} must be a {[c.__name__ for c in cls] if type(cls) == tuple else cls.__name__} instance, but is {kwarg.__class__.__name__}\nValue: {kwarg}"
+            if(not isinstance(kwarg, cls)):
+                if(force_type):
+                    kwarg = cls(kwarg)  
+                else:
+                    assert False, f"kwarg {name} must be a {[c.__name__ for c in cls] if type(cls) == tuple else cls.__name__} instance, but is {kwarg.__class__.__name__}\nValue: {kwarg}"
             print(f" Verified args[{num}]")
 
         return kwarg
@@ -73,7 +81,7 @@ def sargkwarg(num:int, name:str, cls, default_call, args, kwargs, can_be_none=Fa
     print(f"Check var {name}")
     in_kwargs = name in kwargs
 
-    if(num is not None):
+    if(not in_kwargs or (num is not None and num < len(args))):
         if(len(args) <= num):
             args.extend([None] * (num - len(args) + 1))
         
@@ -101,7 +109,11 @@ def sargkwarg(num:int, name:str, cls, default_call, args, kwargs, can_be_none=Fa
                 else:
                     print(f" None -> args[{num}]")
             elif(cls is not None):
-                assert isinstance(arg, cls), f"arg {name} must be a {[c.__name__ for c in cls] if type(cls) == tuple else cls.__name__} instance, but is {arg.__class__.__name__}\nValue: {arg}"
+                if(not isinstance(arg, cls)):
+                    if(force_type):
+                        arg = cls(arg)  
+                    else:
+                        assert False, f"arg {name} must be a {[c.__name__ for c in cls] if type(cls) == tuple else cls.__name__} instance, but is {arg.__class__.__name__}\nValue: {arg}"
                 print(f" Verified args[{num}]")
 
         return arg
@@ -122,7 +134,11 @@ def sargkwarg(num:int, name:str, cls, default_call, args, kwargs, can_be_none=Fa
             else:
                 print(f" None -> kwargs[{name}]")
         elif(cls is not None):
-            assert isinstance(kwarg, cls), f"kwarg {name} must be a {[c.__name__ for c in cls] if type(cls) == tuple else cls.__name__} instance, but is {kwarg.__class__.__name__}\nValue: {kwarg}"
+            if(not isinstance(kwarg, cls)):
+                if(force_type):
+                    kwarg = cls(kwarg)  
+                else:
+                    assert isinstance(kwarg, cls), f"kwarg {name} must be a {[c.__name__ for c in cls] if type(cls) == tuple else cls.__name__} instance, but is {kwarg.__class__.__name__}\nValue: {kwarg}"
             print(f" Verified kwargs[{name}]")
 
         return kwarg

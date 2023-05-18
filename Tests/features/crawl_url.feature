@@ -1,6 +1,6 @@
-Feature: Crawl a url in a new browser
+Feature: Crawl an url in a new browser
 
-Scenario: Crawl a url
+Scenario: Crawl an url
     Given We want to crawl "https://duckduckgo.com"
     
     When The url is valid

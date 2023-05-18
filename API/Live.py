@@ -6,14 +6,20 @@ import traceback
 from typing import *
 from itertools import chain
 from inspect import iscoroutinefunction
-from multiprocessing import Process, Manager
-from multiprocessing.managers import ListProxy
+from threading import Thread, Lock
 
 from API.Crawler import Crawler
 
-class Live_slave(Crawler):
+from Extensions.Control_GUI import Control_GUI
+
+class Browser_slave(Crawler):
     slave_local_results: list
+    slave_results: list
     slave_queue: list
+
+    slave_queue_lock: Lock
+    slave_results_lock: Lock
+
     _slave_open: cython.bint
 
     url_tracking_dict: dict
@@ -29,29 +35,29 @@ class Live_slave(Crawler):
 
     def eval_code(self, code):
         print(eval(code))
-    
-    @staticmethod
-    def slave_run(*args, slave_queue, slave_results, **kwargs):
-        slave_process = Process(target=Live_slave._slave_target, args=[args, slave_queue, slave_results, kwargs])
-        slave_process.start()
-
-        return slave_process
 
     @staticmethod
-    def _slave_target(args, slave_queue, slave_results, kwargs):
-        slave = Live_slave(*args, **kwargs)
+    def _slave_target(args, slave_queue, slave_results, slave_queue_lock, slave_results_lock, kwargs):
+        slave = Browser_slave(*args, **kwargs)
 
-        loop = asyncio.get_event_loop()
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+        
         if(loop.is_running()):
             loop.stop()
             loop = asyncio.new_event_loop()
 
-        loop.run_until_complete(slave._slave_run(slave_queue, slave_results))
+        loop.run_until_complete(slave._slave_run(slave_queue, slave_results, slave_queue_lock, slave_results_lock))
 
-    async def _slave_run(self, slave_queue, slave_results):
+    async def _slave_run(self, slave_queue, slave_results, slave_queue_lock, slave_results_lock):
         print("Slave starting...")
         self._slave_open = True
         self.slave_queue = slave_queue
+        self.slave_results = slave_results
+        self.slave_queue_lock = slave_queue_lock
+        self.slave_results_lock = slave_results_lock
 
         try:
             await self.open_crawler()
@@ -62,10 +68,17 @@ class Live_slave(Crawler):
             print(f"Slave started ({len(slave_queue)})")
 
             while True:
-                while(not len(slave_queue)):
-                    await asyncio.sleep(3)
+                if(not len(slave_queue)):
+                    while True:
+                        if(len(slave_queue)):
+                            break
+                        await asyncio.sleep(3)
+                        print("Waiting", end='\r')
+                print()
                 
-                func_name, mode, args, kwargs = slave_queue.pop(0)
+                with slave_queue_lock:
+                    func_name, mode, args, kwargs = slave_queue.pop(0)
+                
                 print(f"Slave got function \"{func_name}\"")
                 if(func_name == "exit"):
                     break
@@ -82,42 +95,69 @@ class Live_slave(Crawler):
                 try:
                     if(iscoroutinefunction(func)):
                         print(f"Slave async {func_name}({args}, {kwargs})")
-                        res = await func(*args, **kwargs)
                         try:
-                            slave_results.append(res)
+                            res = await func(*args, **kwargs)
+                        except TypeError:
+                            res = await func(self, *args, **kwargs)
+                            
+                        try:
+                            with slave_results_lock:
+                                slave_results.append(res)
                         except TypeError:
                             self.slave_local_results.append(res)
                     else:
                         if(mode == "async"):
                             print(f"Slave async {func_name}({args}, {kwargs})")
-                            res = await func(*args, **kwargs)
                             try:
-                                slave_results.append(res)
+                                res = await func(*args, **kwargs)
+                            except TypeError:
+                                res = await func(self, *args, **kwargs)
+
+                            try:
+                                with slave_results_lock:
+                                    slave_results.append(res)
                             except TypeError:
                                 self.slave_local_results.append(res)
                         elif(mode == "agen"):
                             print(f"Slave agen {func_name}({args}, {kwargs})")
                             results = []
-                            async for it in func(*args, **kwargs):
-                                results.append(await it)
                             try:
-                                slave_results.append(results)
+                                async for it in func(*args, **kwargs):
+                                    results.append(await it)
+                            except TypeError:
+                                async for it in func(self, *args, **kwargs):
+                                    results.append(await it)
+                            
+                            try:
+                                with slave_results_lock:
+                                    slave_results.append(results)
                             except TypeError:
                                 self.slave_local_results.append(results)
                         elif(mode == "gen"):
                             print(f"Slave gen {func_name}({args}, {kwargs})")
                             results = []
-                            for it in func(*args, **kwargs):
-                                results.append(it)
                             try:
-                                slave_results.append(results)
+                                for it in func(*args, **kwargs):
+                                    results.append(it)
+                            except TypeError:
+                                for it in func(self, *args, **kwargs):
+                                    results.append(it)
+
+                            try:
+                                with slave_results_lock:
+                                    slave_results.append(results)
                             except TypeError:
                                 self.slave_local_results.append(results)
                         else:
                             print(f"Slave {func_name}({args}, {kwargs})")
-                            res = func(*args, **kwargs)
                             try:
-                                slave_results.append(res)
+                                res = func(*args, **kwargs)
+                            except TypeError:
+                                res = func(self, *args, **kwargs)
+
+                            try:
+                                with slave_results_lock:
+                                    slave_results.append(res)
                             except TypeError:
                                 self.slave_local_results.append(res)
                 except Exception as err:
@@ -141,16 +181,29 @@ class Live_slave(Crawler):
             for page in context.pages:
                 print(f"# | {page}", flush=False)
         print("####", flush=False)
-        print(f"# Queue: {len(self.slave_queue)}")
-        for result in self.slave_queue[-10:]:
-            print(f"# | {result}", flush=False)
+        with self.slave_queue_lock:
+            print(f"# Queue: {len(self.slave_queue)}")
+            for result in self.slave_queue[-10:]:
+                print(f"# | {result}", flush=False)
         print("####", flush=False)
         print(f"# Outputs: {len(self.slave_local_results)}")
         for result in self.slave_local_results[-10:]:
             print(f"# | {result}", flush=False)
         print("####")
 
-    async def goto(self, url: str) -> None:
+    def get(self, variable: str, *args, **kwargs):
+        obj = self
+        for obj_name in variable.split('.'):
+            print(f"Next: {obj_name}", flush=False)
+            obj = getattr(obj, obj_name)
+
+            if(obj is None):
+                print(f"Aborted. \"{obj_name}\" not found in \"{variable}\"")
+                continue
+
+        return obj
+
+    async def goto(self, url: str, *args, **kwargs) -> None:
         await self.browser.contexts[0].pages[0].goto(url, wait_until="domcontentloaded")
         self.slave_local_results.append(f"[+] Gone to \"{url}\"")
 
@@ -179,90 +232,99 @@ class Live_slave(Crawler):
                             page_track.pop(0)
                         elif(new_callback is not None):
                             await new_callback(self, page)
-                        
 
                         if(callback is not None):
                             await callback(self, page)
                 await asyncio.sleep(2 / context_index)
 
-class ProxyWrapper:
-    attrs: list = []
-
-    def __init__(self, attr=None):
-        if(attr is not None):
-            self.attrs.clear()
-            self.attrs.append(attr)
-
-    def get(self) -> Any:
-        attr = '.'.join(self.attrs)
-        print(f"[P] Get {attr}")
-
-        prev_len = len(Live_browser.slave_shared_results)
-        Live_browser.slave_shared_queue.append(("__getattr__", 0, [attr], {}))
-
-        while(len(Live_browser.slave_shared_results) == prev_len):
-            pass
-
-        self.attrs.clear()
-        return Live_browser.slave_shared_results[-1]
-
-    def __getattr__(self, attr: str) -> object:
-        print(f"[P] Got {attr}")
-        self.attrs.append(attr)
-        return self
-
-    def __setattr__(self, attr: str, value: Any) -> None:
-        attr = '.'.join(chain(self.attrs, [attr]))
-        print(f"[P] Set {attr} to {value}")
-        Live_browser.slave_shared_queue.append(("__setattr__", 0, [attr, value], {}))
-        self.attrs.clear()
-        
-    def __call__(self, *args, **kwargs):
-        print(f"[P] Added {'.'.join(self.attrs)} with ({args}, {kwargs})")
-        
-        mode = kwargs.pop('run_mode', '')
-        Live_browser.slave_shared_queue.append(('.'.join(self.attrs), mode, args, kwargs))
-        self.attrs.clear()
-        
-class Live_browser():
+class Live_browser(Control_GUI):
     slave_args: tuple
     slave_kwargs: dict
 
-    slave_process: Process
+    slave_thread: Thread
 
-    _manager: Manager
-    
-    slave_shared_queue: ListProxy
-    slave_shared_results: ListProxy
+    slave_shared_queue: list
+    slave_shared_results: list
+
+    slave_shared_queue_lock: Lock
+    slave_shared_results_lock: Lock
+
+    slave_shared_objects: dict
 
     def __init__(self, *args, **kwargs):
-        Live_browser._manager = Manager()
-        Live_browser.slave_shared_queue = Live_browser._manager.list()
-        Live_browser.slave_shared_results = Live_browser._manager.list()
-        Live_browser.slave_args = args
-        Live_browser.slave_kwargs = kwargs
+        self.slave_shared_queue = list()
+        self.slave_shared_results = list()
+        self.slave_shared_queue_lock = Lock()
+        self.slave_shared_results_lock = Lock()
+        self.slave_shared_objects = kwargs.get("slave_shared_objects", dict())
+
+        self.slave_args = args
+        self.slave_kwargs = kwargs
 
     def __enter__(self, *args, **kwargs):
-        Live_browser.slave_process = Live_slave.slave_run(
-            *Live_browser.slave_args,
-            slave_queue = Live_browser.slave_shared_queue,
-            slave_results = Live_browser.slave_shared_results,
-            **Live_browser.slave_kwargs
+        self.slave_thread = Live_browser._create_slave(
+            *self.slave_args,
+            slave_queue = self.slave_shared_queue,
+            slave_results = self.slave_shared_results,
+            slave_queue_lock = self.slave_shared_queue_lock,
+            slave_results_lock = self.slave_shared_results_lock,
+            **self.slave_kwargs
         )
-        return self
 
     def __exit__(self, *args, **kwargs):
-        Live_browser.slave_shared_queue.insert(0, ('exit', 0, 0, 0))
-        Live_browser.slave_process.join()
-        
-    def __getattr__(self, attr):
-        if(attr == 'wait'):
-            return
-        
-        return ProxyWrapper(attr)
-
-    def open(self):
-        self.__enter__()
+        self.slave_shared_queue.insert(0, ('exit', 0, 0, 0))
+        self.slave_thread.join()
+    
+    def open(self, *args, **kwargs):
+        self.__enter__(*args, **kwargs)
 
     def close(self):
         self.__exit__()
+
+    def add_command(self, command: str, *args, mode: str='', **kwargs):
+        print(f"Added command \"{command}\"")
+        with self.slave_shared_queue_lock:
+            self.slave_shared_queue.append((command, mode, args, kwargs))
+
+    def get(self, variable):
+        print(f"Get \"{variable}\"")
+        with self.slave_shared_queue_lock:
+            self.slave_shared_queue.append(("get", None, [variable], {}))
+
+    async def wait_until_done(self, expected_delay: float = 0.25):
+        expected_results = len(self.slave_shared_results) + len(self.slave_shared_queue)
+        last_remaining = len(self.slave_shared_queue)
+        same_remaining_times = 0
+        while(last_remaining):
+            await asyncio.sleep(0.25)
+            
+            new_remaining = len(self.slave_shared_queue)
+            if(last_remaining != new_remaining):
+                last_remaining = new_remaining
+                same_remaining_times = 0
+            else:
+                same_remaining_times += 1
+                if(same_remaining_times >= 20):
+                    with self.slave_shared_queue_lock:
+                        last_remaining = len(self.slave_shared_queue)
+                        if(last_remaining != 0):
+                            self.slave_shared_queue.pop(0)
+                    same_remaining_times = 0
+
+        # Just in case there is a race condition, keep 1 as margin. 
+        # It is suposed to be 0
+        if(abs(len(self.slave_shared_results) - expected_results) == 1):
+            await asyncio.sleep(expected_delay)
+
+        last_result = None
+        with self.slave_shared_results_lock:
+            last_result = self.slave_shared_results[-1]
+
+        return last_result
+
+    @staticmethod
+    def _create_slave(*args, slave_queue, slave_results, slave_queue_lock, slave_results_lock, **kwargs):
+        slave_process = Thread(target=Browser_slave._slave_target, args=[args, slave_queue, slave_results, slave_queue_lock, slave_results_lock, kwargs])
+        slave_process.start()
+
+        return slave_process

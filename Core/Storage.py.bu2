@@ -10,6 +10,8 @@ import re
 from typing import Iterable
 from datetime import datetime
 
+from Storage_graph import Graph
+
 def default(obj):
     if(isinstance(obj, set)):
         return list(obj)
@@ -18,7 +20,7 @@ def default(obj):
 
     raise TypeError("Object of type '%s' is not JSON serializable" % type(obj).__name__)
 
-class Storage:
+class Storage(Graph):
     storage_browser_parent: object
     storage_base_path: str
     storage_path: str
@@ -68,6 +70,7 @@ class Storage:
             self.fill_file_cache()
 
         self.Storage_init = True
+        super().__init__()
 
     async def __aenter__(self, *args, step:cython.bint=0, **kwargs):
         if(step != 0): return
@@ -98,7 +101,7 @@ class Storage:
             if(len(data_list) == self.max_memory_domains):
                 store_list = data_list.copy()
                 data_list.clear()
-                asyncio.create_task(self.store_data(key, store_list))
+                self.store_data(key, store_list)
 
 
     async def update_data(self, key:str, reg:Iterable[tuple]) -> None:

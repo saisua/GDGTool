@@ -1,13 +1,13 @@
 # distutils: language=c++
 
 cimport cython
-import re
 
 from Core.Crawler cimport Crawler
+from Core.Browser cimport Browser
 
 ctypedef struct PyObject
 
-cdef class Crawler:
+cdef class Crawler(Browser):
     cdef dict crawler_sites
     cdef dict next_level_sites
 
@@ -25,8 +25,8 @@ cdef class Crawler:
     cdef cython.bint _crawler_rotate_request
     cdef cython.bint _crawler_rotate_in_progress
 
-    cdef re.Pattern crawler_domain_regex
-    cdef re.Pattern crawler_robots_regex
+    cdef object crawler_domain_regex
+    cdef object crawler_robots_regex
 
     cdef cython.bint Crawler_init
     cdef cython.bint Crawler_enter

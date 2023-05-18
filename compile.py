@@ -14,21 +14,15 @@ setup(
     name='Scraper',
     ext_modules=cythonize(
         [
-            "Core/utils/children.py",
-            "Core/*",
+            "Core/*.py",
+            "Core/utils/*.py",
             "Extensions/*.py",
-            "cli.py"
+            #"gui.py",
         ],
         language_level=3,
         exclude_failures=True,
         #show_all_warnings=True,
     ),
     zip_safe=False,
-    extra_compile_args=["-Ofast", 
-                        "-march=native",
-                        "-std=c++20",
-                        "CPPFLAGS=\"-D_GLIBCXX_USECXX11_ABI=0\"",
-                        "-auto-profile",
-                        "-whole-program"]
 )
 print("###\n\n[+] Done (Compilation)\n")

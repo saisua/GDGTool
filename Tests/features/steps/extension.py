@@ -17,7 +17,7 @@ from src.browser_steps import *
 def setup_plugin(context, plugin):
     imp_plugin = __import__(f"Plugins.{plugin}")
 
-    getattr(imp_plugin, plugin).setup(context.browser)
+    assert getattr(imp_plugin, plugin).setup(context.browser)
 
 spaces = "\s+"
 
