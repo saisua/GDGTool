@@ -1,8 +1,6 @@
 # distutils: language=c++
 
 import asyncio
-import threading
-import traceback
 import re
 import cython
 from typing import *
@@ -12,7 +10,7 @@ import numpy as np
 
 from urllib.request import urlopen
 
-from playwright.async_api import TimeoutError, Error as NotAttachedToDomError, BrowserContext, Locator
+from playwright.async_api import TimeoutError
 
 from Core.Browser import Browser
 
@@ -35,8 +33,6 @@ class Crawler(Browser):
 	_crawler_rotate_request: cython.bint
 	_crawler_rotate_in_progress: cython.bint
 
-	_level_barrier: threading.Barrier
-
 	# Regex to find the domain of a URL. 
 	# per example: https://desktop.github.com/test -> github.com
 	crawler_domain_regex: re.Pattern
@@ -44,8 +40,6 @@ class Crawler(Browser):
 
 	Crawler_init: cython.bint
 	Crawler_enter: cython.bint
-
-	storage_function: Callable
 	
 
 	def __init__(self, sites:Dict[str, List[str]]={}, *args:tuple, **kwargs:dict):
@@ -77,13 +71,6 @@ class Crawler(Browser):
 		self.Crawler_init = True
 		self.Crawler_enter = False
 
-		if(self._storage is not None):
-			self.storage_function = self._storage.storage_dict_cls
-		else:
-			self.storage_function = dict() 
-
-		self._level_barrier = None
-
 	async def __aenter__(self, *args, step:cython.bint=0, **kwargs):
 		if(self.Crawler_enter): return
 		if(step != 0): return
@@ -104,7 +91,7 @@ class Crawler(Browser):
 		self._crawler_avaliable_tabs.extend([await context.new_page() for _ in range(num_tabs)])
 		self._crawler_open_tabs += num_tabs
 
-	async def get_tabs(self, max_tabs:cython.uint) -> list:
+	async def get_websites(self, max_tabs:cython.uint) -> list:
 		# To be overridden when using a distributed crawler
 		next_tabs:list = self._crawler_avaliable_tabs[:max_tabs]
 
@@ -116,7 +103,6 @@ class Crawler(Browser):
 				if(len(self._crawler_avaliable_tabs)):
 					next_tabs[:max_tabs]
 					break
-				# print("Waiting for available tabs")
 
 		self._crawler_avaliable_tabs = self._crawler_avaliable_tabs[len(next_tabs):]
 
@@ -133,25 +119,7 @@ class Crawler(Browser):
 				else:
 					self.crawler_sites.get(domain).add(site)
 
-	async def _perform_data_management(self, website_data, tab, loaded_site):
-		await asyncio.gather(*(
-			data_alter(self, website_data, tab) 
-			for data_alter in self._data_management
-		))
-
-		self._crawler_avaliable_tabs.append(tab)
-
-		try:
-			await self._level_barrier.wait(15)
-		except threading.BrokenBarrierError:
-			pass
-
-	async def _manage_website(self, 
-			   tab:object, 
-			   url:str, *, 
-			   enforce_robots:cython.bint=False,
-			   do_data_management:cython.bint=False,
-			   analize_new_urls:cython.bint=True):
+	async def _manage_website(self, tab:object, url:str, *, enforce_robots:cython.bint=False):
 		try:
 			loaded_site:object = await tab.goto(url, wait_until="networkidle")
 				
@@ -164,7 +132,6 @@ class Crawler(Browser):
 					return
 		except TimeoutError:
 			print(f"[-] URL \"{url}\" Failed loading by timeout")
-
 			self._crawler_avaliable_tabs.append(tab)
 			return
 		except Exception:
@@ -174,39 +141,35 @@ class Crawler(Browser):
 
 		loaded_site.domain = self.crawler_domain_regex.match(loaded_site.url).group(3)
 
-		website_data = self.storage_function()
+		if(self._storage is not None):
+			website_data = self._storage.storage_dict_cls()
+		else:
+			website_data = dict() 
 
-		added_tab: cython.bint = False
 		try:
 			# In case of dynamically loaded websites
-			await asyncio.gather(*(
-				page_alter(self, website_data, tab) 
-				for page_alter in self._page_management
-			))
+			for _ in asyncio.as_completed([page_alter(self, website_data, tab) for page_alter in self._page_management]):
+				await _
 			
-			if(do_data_management):
-				await asyncio.to_thread(
-						self._perform_data_management(website_data, tab, loaded_site)
-				)
-			else:
-				self._crawler_avaliable_tabs.append(tab)
-				added_tab = True
-
-			if(analize_new_urls and "urls" in website_data):
-				# This also stores the data
-				await self._analize_new_urls(website_data, enforce_robots)
-
-			self._storage.add_data(loaded_site.domain, (loaded_site.url, website_data))
-
+			if(not website_data.get("urls")):
+				for _ in range(10):
+					if(website_data.get("urls")):
+						break
+					await asyncio.sleep(0.1)
+			
+			for _ in asyncio.as_completed([data_alter(self, website_data, tab) for data_alter in self._data_management]):
+				await _
+			
+			if("urls" in website_data):
+				self._analize_new_urls(website_data, enforce_robots)
 		except Exception as e:
 			print(f"Error on page {tab}: {e}")
+		finally:
+			self._crawler_avaliable_tabs.append(tab)
+		
+		self._storage.add_data(loaded_site.domain, (loaded_site.url, website_data))
 
-			if(not added_tab):
-				self._crawler_avaliable_tabs.append(tab)
-
-			print(traceback.format_exc())
-
-	async def _analize_new_urls(self, website_data: dict, enforce_robots: cython.bint):
+	def _analize_new_urls(self, website_data: dict, enforce_robots: cython.bint):
 		site: str
 		for site in website_data["urls"]:
 			if(site not in self.crawler_visited_urls):
@@ -277,7 +240,7 @@ class Crawler(Browser):
 
 		self._crawler_rotate_in_progress = False
 
-	async def crawl(self, contexts:List[BrowserContext]=[],
+	async def crawl(self, contexts:list=[],
 						levels:cython.uint=0, 
 						*, 
 						num_contexts:cython.uint=1, 
@@ -289,30 +252,34 @@ class Crawler(Browser):
 		if(Crawler.url_extraction not in self._page_management):
 			self.add_pipe("page", Crawler.url_extraction, "Get all URLs (necessary for crawling)")
 
-		context: BrowserContext
 		if(not contexts):
+			_:cython.uint
 			dyn_attr:dict = {}
-			if(self.Rotating_proxies_init):
-				dyn_attr["proxy"] = {"server":self.new_proxy()}
+			for _ in range(num_contexts):
+				if(self.Rotating_proxies_init):
+					dyn_attr["proxy"] = {"server":self.new_proxy()}
 
-			context = await self._new_context(
-										accept_downloads=False,
-										**dyn_attr
-									)
+				nc = await self._new_context(
+											accept_downloads=False,
+											**dyn_attr
+										)
 
+				contexts.append(nc)
 			close_contexts = True
-		else: 
-			context = contexts[0]
 
-		start_f: Callable
-		for start_f in self._start_management:
-			await start_f(self, context)
+		#print("Start")
+		context:object
+		for context in contexts:
+			for start_f in self._start_management:
+				await start_f(self, context)
 			
 		#print("End start")
 		self.crawler_visited_urls.update(chain(*self.crawler_sites.values()))
 
 		#print("Context")
-		await self.start_open_tabs(max_tabs, context)
+		tabs_per_context:cython.uint = ceil(max_tabs / num_contexts)
+		for context in contexts:
+			await self.start_open_tabs(tabs_per_context, context)
 
 		tabs:list = []
 		urls:list = []
@@ -322,7 +289,7 @@ class Crawler(Browser):
 		
 		searched_websites:cython.uint = 0
 		for level in range(levels+1):
-			print(f"\n\n# Level {level}:\n  To search: {len(self.crawler_sites)} domains", flush=False)
+			print(f"\n\n# Level {level}:\n  To search: {len(self.crawler_sites)} domains")
 
 			self.crawler_depth = level
 
@@ -331,82 +298,62 @@ class Crawler(Browser):
 					break
 				# print(f"  Found {len(self.crawler_visited_urls)} websites", end='\r')
 
-				tabs = await self.get_tabs(max_tabs)
+				tabs = await self.get_websites(max_tabs)
 				urls = self.get_crawling_urls(len(tabs))
 				searched_websites += len(urls)
 				
-				if(self._url_management):
-					urls = set(
-						await asyncio.gather(
-							*(
-								alter_url(self, urls)
-								for alter_url in self._url_management
-							)
-						)
-					)
-
 				if(len(urls) != len(tabs)):
 					self._crawler_avaliable_tabs.extend(tabs[len(urls):])
 
-				has_data_management: cython.bint = len(self._data_management)
+				if(self._url_management):
+					altered_urls = set()
+					for alter_url in self._url_management:
+						altered_urls.update(await alter_url(self, urls))
+					
+					urls = altered_urls
 
-				if(has_data_management):
-					self._level_barrier = threading.Barrier(len(urls) + 1, timeout=20)
-
-				is_last_level = level == levels
 				for tab, url in zip(tabs, urls):
-					asyncio.create_task(
-						self._manage_website(
-							tab,
-							url,
-							enforce_robots=enforce_robots,
-							do_data_management=has_data_management,
-							analize_new_urls=not is_last_level,
-					))
+					asyncio.create_task(self._manage_website(tab, url, enforce_robots=enforce_robots))
 
 				if(not self._crawler_rotate_in_progress and self._crawler_rotate_request):
 					self._crawler_rotate_in_progress = True
-					asyncio.create_task(self.rotate_over_tabs(context, wait_done=True))
+					for context in contexts:
+						asyncio.create_task(self.rotate_over_tabs(context, wait_done=True))
 					
+			# Wait until all tabs have finished
+			# This is so that next_level_sites is complete
+			#  otherwise, some sites may mix into the next depth level
+			retries = 10
+			print(len(self._crawler_avaliable_tabs), self._crawler_open_tabs)
+			while(len(self._crawler_avaliable_tabs) != self._crawler_open_tabs or not len(self.next_level_sites) and retries):
+				if(not self._crawler_rotate_in_progress and self._crawler_rotate_request):
+					self._crawler_rotate_in_progress = True
+					for context in contexts:
+						asyncio.create_task(self.rotate_over_tabs(context, wait_done=True))
 
-			if(has_data_management):
-				for _ in range(15):
-					try:
-						await self._level_barrier.wait(1)
-						break
-					except threading.BrokenBarrierError:
-						await asyncio.sleep(1)
-						if(not self._crawler_rotate_in_progress and self._crawler_rotate_request):
-							self._crawler_rotate_in_progress = True
-							asyncio.create_task(self.rotate_over_tabs(context, wait_done=True))
+				await asyncio.sleep(1)
+				retries -= 1
 
-			for _ in range(20):
-				if(len(self._crawler_avaliable_tabs) == self._crawler_open_tabs):
-					break
-				await asyncio.sleep(0.5)
+			print(self.next_level_sites)
 
 			self.crawler_sites.clear()
 			self.crawler_sites.update(self.next_level_sites)
 			
 			if(searched_websites >= max_websites):
 				break
+
+		# print("\n\nCrawling completed")
+
+		for context in contexts:
+			# print("Running end pipeline:", flush=True)
+			for end_f in self._end_management:
+				print(f" {end_f.__name__}")
+				await end_f(self, context)
+
+			if(close_contexts):
+				await context.close()
 		
-		for _ in range(200):
-			if(len(self._crawler_avaliable_tabs) == self._crawler_open_tabs):
-				break
-			await asyncio.sleep(0.5)
-
-		print("\n\nCrawling completed")
-
-		# print("Running end pipeline:", flush=True)
-		for end_f in self._end_management:
-			print(f" {end_f.__name__}")
-			await end_f(self, context)
-
-		if(close_contexts):
-			await context.close()
-		
-		return [context]
+		return contexts
 
 	def check_robots(self, domain) -> set:
 		rules_set: set
@@ -422,43 +369,27 @@ class Crawler(Browser):
 
 	@staticmethod
 	async def url_extraction(self, data:dict, page:object):
-		links_locator: Locator = page.locator(':link:visible')
-
-		link_set: set = set()
-		current_links: Union[None, List[str]] = await links_locator.evaluate_all("nodes => nodes.map(node => node.href)")
-		if(current_links is not None):
-			link_set.update(current_links)
-
-		last_found_links: cython.uint = 0
-		found_links: cython.uint = await links_locator.count()
-		for _ in range(10):
-			try:
-				await links_locator.last.scroll_into_view_if_needed(timeout=1_000)
-			except (TimeoutError, NotAttachedToDomError):
-				pass
-
-			links_locator = page.locator(':link:visible')
-
-			found_links = await links_locator.count()
-			if(found_links != last_found_links):
-				last_found_links = found_links
-			elif(last_found_links):
-				break
+		links:list = await page.get_by_role('link').evaluate_all("nodes => nodes.map(node => node.href)")
+	
+		if(links):
+			await asyncio.sleep(1)
+			links:list = await page.get_by_role('link').evaluate_all("nodes => nodes.map(node => node.href)")
 			
-			current_links = await links_locator.evaluate_all("nodes => nodes.map(node => node.href)")
-			if(current_links is not None):
-				link_set.update(current_links)
-
-			await asyncio.sleep(0.5)
-		else:
+			data["urls"] = set(links)
 			return
-
-		current_links = await page.locator(':link:visible').evaluate_all("nodes => nodes.map(node => node.href)")
-		if(current_links is not None):
-			link_set.update(current_links)
-
-		data['urls'] = link_set
 		
+		for _ in range(10):
+			await asyncio.sleep(0.1)
+			
+			links:list = await page.get_by_role('link').evaluate_all("nodes => nodes.map(node => node.href)")
+	
+			if(links):
+				await asyncio.sleep(1)
+				links:list = await page.get_by_role('link').evaluate_all("nodes => nodes.map(node => node.href)")
+				
+				data["urls"] = set(links)
+				return
+
 	async def get_images(self, page:object) -> set:
 		images:list = await page.frames[0].locator("img[src]").evaluate_all("nodes => nodes.map(node => node.src)")
 		while(not images):
@@ -490,24 +421,14 @@ class Crawler(Browser):
 			data["videos"] = set(videos)
 
 	async def get_text(self, page:object) -> str:
-		text_locator: Locator = page.locator('body')
-		
-		text: str
-		for _ in range(10):
-			text = await text_locator.inner_text()
-			if(text):
-				return text
+		return await page.frames[0].inner_text('body')
 
 	@staticmethod
 	async def text_extraction(self, data:dict, page:object):
-		text_locator: Locator = page.locator('body')
+		text:str = await page.frames[0].inner_text('body')
 		
-		text: str
-		for _ in range(10):
-			text = await text_locator.inner_text()
-			if(text):
-				data["text"] = text
-				return
+		if(text is not None):
+			data["text"] = text
 
 	async def load_session(self, session_name:str, *args, **kwargs) -> None:
 		await self.add_sites((site for session in (await super()._load_session(session_name)) for site in session))

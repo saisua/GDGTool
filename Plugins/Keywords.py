@@ -3,7 +3,7 @@ from Core.Crawler import Crawler
 from EndScripts.Keywords import main
 
 async def get_keywords(crawler:Crawler):
-    main(folder=crawler.storage_path)
+    main(folder=crawler.storage_path, storage_base_path=crawler.storage_base_path)
 
 def setup(crawler:Crawler) -> bool:
 	if(crawler._pipeline is not None):

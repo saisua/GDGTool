@@ -117,7 +117,7 @@ class Crawler(Core_Crawler):
         except Exception:
             print(traceback.format_exc())
 
-    async def get_websites(self, *args, **kwargs) -> list:
+    async def get_tabs(self, *args, **kwargs) -> list:
         if(self._cr_verbose):
             print("Get websites", flush=False)
             
@@ -127,7 +127,7 @@ class Crawler(Core_Crawler):
             args = list(args)
             await argkwarg(0, "max_tabs", int, lambda : 25, args, kwargs)
 
-            return await super().get_websites(*args, **kwargs)
+            return await super().get_tabs(*args, **kwargs)
         except Exception:
             print(traceback.format_exc())
 

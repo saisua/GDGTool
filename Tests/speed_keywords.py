@@ -8,9 +8,8 @@ import re
 import cython
 from datetime import datetime
 
-import uvloop
-
 from Core.Crawler import Crawler
+from Plugins.Keywords import setup
 
 def route_response(crawler:Crawler):
 	@cython.cdivision(True)
@@ -27,8 +26,7 @@ def route_response(crawler:Crawler):
 
 async def speed_pipeline():
 	sites = {
-        #"duckduckgo.com": ["https://duckduckgo.com/?t=ffab&q=scraping+test&atb=v320-1&ia=web", ],
-		"crawler-test.com": ["https://crawler-test.com/", ],
+        "crawler-test.com": ["https://crawler-test.com/", ],
 	}
 
 	# Chromium (50 tabs) : 746 in 18.05
@@ -44,12 +42,13 @@ async def speed_pipeline():
 		   use_session=False, 
 		   headless=True
 	)
+	setup(crawler)
 
 	crawler.add_pipe("routing", ("**/*", route_response))
 
 	await crawler.open()
 	start_time = datetime.now()
-	await crawler.crawl(levels=2, max_tabs=10, max_websites=250)
+	await crawler.crawl(levels=1, max_tabs=10, max_websites=250)
 	end_time = datetime.now()
 	
 	print(f"\nTotal time: {end_time - init_time}\nInitialization time: {start_time - init_time}\nCrawling time: {end_time - start_time}")

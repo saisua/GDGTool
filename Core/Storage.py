@@ -41,13 +41,14 @@ class Storage:
     def __init__(self, browser, *args, 
                  remove_old_data:bool=False, 
                  folder_name:str=None, 
+                 storage_path:str='.',
                  max_memory_domains:cython.uint=10, 
                  max_operations:cython.uint=500,
                  **kwargs
                  ) -> None:
         print(f"{' '*kwargs.get('verbose_depth', 0)}Initializing Storage")
 
-        self.storage_base_path = "./Data/"
+        self.storage_base_path = f"{storage_path.rstrip('/')}/Data/"
         self.storage_library = json
         self.storage_data_repr = dict()
         self.file_cache = dict()
@@ -59,7 +60,7 @@ class Storage:
         self.storage_data = dict()
         self.to_filename_re = re.compile(r"[^\w\d_\-.]+")
 
-        self.storage_path = self.storage_base_path + (folder_name or f"{str(datetime.now()).split('.')[0]}/")
+        self.storage_path = self.storage_base_path + (folder_name or '') + f"_{str(datetime.now()).split('.')[0]}/"
         self.max_memory_domains = max_memory_domains
         self.max_operations = max_operations
         self._operations = 0
@@ -82,8 +83,8 @@ class Storage:
         elif(not os.path.isdir(self.storage_path)):
             raise FileExistsError()
 
-    async def __aexit__(self, *args, step:cython.bint=1, **kwargs):
-        if(step != 1): return
+    async def __aexit__(self, *args, step:cython.bint=0, **kwargs):
+        if(step != 0): return
 
         await self.dump_all_data()
 

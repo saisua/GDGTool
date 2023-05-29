@@ -5,6 +5,7 @@ import json
 
 def load_data(
         folder: str,
+        storage_base_path: str='.',
         folder_regex: Pattern= '.*',
         file_regex: Pattern = '.*',
         *args,
@@ -21,7 +22,7 @@ def load_data(
         folder_regex (Pattern): The regex that matches what folders will be loaded
         file_regex (Pattern): The regex that matches what JSON files will be loaded
     """
-    root_scan_path: Path = Path(folder)
+    root_scan_path: Path = Path(storage_base_path, folder)
     if(not root_scan_path.exists() or not root_scan_path.is_dir()):
         return {}, folder
 

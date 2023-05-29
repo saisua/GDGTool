@@ -6,7 +6,7 @@ RUN useradd -ms /bin/bash scraper
 WORKDIR /home/scraper
 
 RUN apt update
-RUN apt install gcc python3-pip python3 python3-setuptools -y
+RUN apt install gcc python3-pip python3 python3-setuptools sysstat -y
 
 COPY requirements.txt ./
 
@@ -46,6 +46,6 @@ RUN export PATH=$PATH:/home/scraper/.local/bin
 RUN export $(cat .env | grep "^[^#]" | xargs)
 
 RUN ./decompile.sh
-#RUN python3 compile.py
+# RUN python3 compile.py
 
-ENTRYPOINT ["python", "gui.py"]
+ENTRYPOINT ["tail", "-f", "/dev/null"]
