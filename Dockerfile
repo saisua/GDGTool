@@ -30,12 +30,14 @@ COPY ./EndScripts/ ./EndScripts/
 COPY ./Extensions/ ./Extensions/
 COPY ./External/ ./External/
 COPY ./Plugins/ ./Plugins/
-COPY ./Settings/ ./Settings/
+#COPY ./Settings/ ./Settings/
 COPY ./Tests/ ./Tests/
-COPY ./Utils/ ./Utils/
+#COPY ./Utils/ ./Utils/
 COPY ./gui.py ./
 COPY ./decompile.sh ./
 COPY ./compile.py ./
+
+RUN mkdir -p Settings/Sessions
 
 USER root
 RUN chown -R scraper ./
