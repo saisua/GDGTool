@@ -77,7 +77,7 @@ async def keywords(event, window, browser:Live_browser):
 async def open_test_page(event, window, browser:Live_browser):
     test_page = "https://en.wikipedia.org/wiki/Resolution_Guyot"
 
-    browser.add_command("open_websites", websites=[test_page], mode="agen")
+    browser.add_command("open_websites", websites={test_page,}, mode="agen")
 
 async def test(event, window, browser:Live_browser):
     browser.get("browser.contexts")
@@ -201,7 +201,7 @@ async def main():
     )
 
     if(not cmd_args.session or not cmd_args.load_session):
-        gui_browser.add_command("open_websites", websites=cmd_args.websites, mode="agen")
+        gui_browser.add_command("open_websites", websites=set(cmd_args.websites), mode="agen")
     gui_browser.add_command("apply_contexts", manage_contexts, mode="async")
 
     buttons = {

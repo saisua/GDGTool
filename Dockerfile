@@ -48,6 +48,6 @@ RUN export PATH=$PATH:/home/scraper/.local/bin
 RUN export $(cat .env | grep "^[^#]" | xargs)
 
 RUN ./decompile.sh
-# RUN python3 compile.py
+RUN python3 compile.py
 
 ENTRYPOINT ["tail", "-f", "/dev/null"]
